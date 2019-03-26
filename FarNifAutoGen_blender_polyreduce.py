@@ -112,7 +112,11 @@ if os.path.exists(in_file) == False:
 if ("--reduction_scale" in argv):
     reduction_scale = int(argv[argv.index("--reduction_scale") + 1])
 else:
-    reduction_scale = 0.75
+    reduction_scale = 0.90
+if (reduction_scale >= 1.0):
+    print "Blender PolyReduce(): ERROR: reduction_scale is >= 1. Skippping file..."
+    Blender.Quit()
+    
 
 #start import
 config = dict(**NifConfig.DEFAULTS)

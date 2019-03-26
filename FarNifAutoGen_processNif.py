@@ -32,8 +32,8 @@ def init_logger():
     #pyffilogger.addHandler(loghandler)
 
 def shutdown_logger():
-    print ""
     #pyffilogger.removeHandler(loghandler)
+    return
 
 def init_paths(input_datadir_arg=None, output_datadir_arg=None):
     global output_root
@@ -48,10 +48,12 @@ def init_paths(input_datadir_arg=None, output_datadir_arg=None):
         output_datadir = output_root + "Data/"
     else:
         output_datadir = output_datadir_arg
-        if "data/" in output_datadir_arg.lower():
+        if "data/" in output_datadir_arg.lower() or "data\\" in output_datadir.lower():
             output_root = output_datadir_arg.lower().replace("data/","")
+            output_root = output_root.replace("data\\","")
         else:
             print "processNIF(): WARNING: output_datadir_arg does not contain a \"Data/\" directory, using output_data for output_root."
+#            raw_input("output_datadir_arg=" + output_datadir_arg)
             output_root = output_datadir
     if not os.path.exists(output_datadir):
         os.makedirs(output_datadir)
@@ -228,7 +230,7 @@ def output_ddslist():
         ostream.write(filename + "\n")
     ostream.close()
 
-def processNif(input_filename, ref_scale=float(1.0), input_datadir_arg=None, output_datadir_arg=None):
+def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0), input_datadir_arg=None, output_datadir_arg=None):
     global dds_list
     global model_minx
     global model_miny
@@ -253,9 +255,7 @@ def processNif(input_filename, ref_scale=float(1.0), input_datadir_arg=None, out
     root0 = None
     output_filename_path = None
 
-#    print ""
-    print "\nprocessNIF(): Processing " + input_filename + " ..."
-#    print ""
+    print "processNIF(): Processing " + input_filename + " ..."
     init_logger()
     init_paths(input_datadir_arg=input_datadir_arg, output_datadir_arg=output_datadir_arg)
     nifdata = load_nif(input_filename)
@@ -271,14 +271,16 @@ def processNif(input_filename, ref_scale=float(1.0), input_datadir_arg=None, out
                 process_NiSourceTexture(block)
             if isinstance(block, NifFormat.NiTriShapeData):
                 process_NiTriShapeData(block)
-                calc_model_minmax()
+    if (model_minx is not None):
+        calc_model_minmax()
     # if radius too small, skip
-    print "DEBUG: radius=" + str(model_radius) + ", ref_scale=" + str(ref_scale)
+#    print "DEBUG: radius=" + str(model_radius) + ", ref_scale=" + str(ref_scale)
     if (model_radius is None):
-        model_radius = 0
-    if (model_radius * ref_scale) < 400.0:
+        do_output = False
+        print "ERROR: no model_radius calculated, unsupported NIF file."
+    elif (model_radius * ref_scale) < radius_threshold_arg:
         #don't output
-        print "DEBUG: model radius under threshold, skipping " + input_filename
+#        print "DEBUG: model radius under threshold for [" + input_filename + "]"
         do_output = False
     else:
         #output file....
@@ -287,7 +289,5 @@ def processNif(input_filename, ref_scale=float(1.0), input_datadir_arg=None, out
         output_niffile(nifdata, input_filename)
         output_ddslist()
     shutdown_logger()
-#    print ""
 #    print "processNIF(): complete."
-#    print ""
     return do_output

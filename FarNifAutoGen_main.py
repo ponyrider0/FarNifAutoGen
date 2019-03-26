@@ -13,12 +13,75 @@ import FarNifAutoGen_processNif
 #from FarNifAutoGen_processNif import processNif
 #from FarNifAutoGen_processNif import output_filename_path
 
+# set up user-defined settings
+if (os.environ.get("NIF_REDUCTION_SCALE") is not None):
+    nif_reduction_scale = float(os.environ["NIF_REDUCTION_SCALE"])
+else:
+    nif_reduction_scale = 1.0
+if (os.environ.get("DDS_REDUCTION_SCALE") is not None):
+    dds_reduction_scale = float(os.environ["DDS_REDUCTION_SCALE"])
+else:
+    dds_reduction_scale = 0.5
+if (os.environ.get("MODEL_RADIUS_THRESHOLD") is not None):
+    model_radius_threshold = float(os.environ["MODEL_RADIUS_THRESHOLD"])
+else:
+    model_radius_threshold = 400.0
+##print "DEBUG: nif_reduction_scale = " + str(nif_reduction_scale)
+##print "DEBUG: dds_reduction_scale = " + str(dds_reduction_scale)
+##print "DEBUG: model_radius_threshold = " + str(model_radius_threshold)
+##raw_input("Press ENTER to continue...")
+
+
 # custom settings
 os.environ["BLENDEREXE"] = "C:/Blender/blender.exe"
 os.environ["FARNIFAUTOGEN_INPUT_DATADIR"] = "C:/Games/bsacmd/out/"
+    
+# global variables
+nif_list_jobfile = "nif_list.job"
+dds_list_jobfile = "lowres_list.job"
+nif_joblist = dict()
+dds_joblist = list()
 
-# set up user-defined settings
+# set up input/output path variables
+#input_root = "./"
+#input_path = input_root + ""
+if (os.environ.get("FARNIFAUTOGEN_INPUT_DATADIR") is not None):
+    input_datadir = os.environ["FARNIFAUTOGEN_INPUT_DATADIR"]
+    input_datadir = str(os.path.normpath(input_datadir)).replace("\\","/")
+    last_char = input_datadir[-1:]
+    if last_char is not '/' and last_char is not '\\':
+        input_datadir = input_datadir + "/"
+else:
+#    input_datadir = "./data/"
+    input_datadir = "C:/SteamLibrary/steamapps/common/Oblivion/Data/"
+if "data/" in input_datadir.lower() or "data\\" in input_datadir.lower():
+    input_root = input_datadir.lower().replace("data/","")
+    input_root = input_root.replace("data\\","")
+else:
+    input_root = input_datadir
 
+if (os.environ.get("FARNIFAUTOGEN_OUTPUT_DATADIR") is not None):
+    output_datadir = os.environ["FARNIFAUTOGEN_OUTPUT_DATADIR"]
+    output_datadir = str(os.path.normpath(output_datadir)).replace("\\","/")
+    last_char = output_datadir[-1:]
+    if last_char is not '/' and last_char is not '\\':
+        output_datadir = output_datadir + "/"
+else:
+    output_datadir = "C:/FarNifAutoGen.output/data/"
+if "data/" in output_datadir.lower() or "data\\" in output_datadir.lower():
+    output_root = output_datadir.lower().replace("data/","")
+    output_root = output_root.replace("data\\","")
+else:
+    output_root = output_datadir
+#output_root = outputRoot + "FarNifAutoGen.output/"
+#output_datadir = output_root + "data/"
+##print "DEBUG: input_datadir = " + input_datadir
+##print "DEBUG: input_root = " + input_root
+##print "DEBUG: output_datadir = " + output_datadir
+##print "DEBUG: output_root = " + output_root
+##raw_input()
+    
+    
 # set up executable path variables
 if (os.environ.get("BLENDEREXE") is not None):
     blenderPath = os.environ["BLENDEREXE"]
@@ -40,41 +103,6 @@ if os.path.exists(gimpPath) == False:
     print "==================="
     raw_input("Press ENTER to quit.")
     quit(-1)
-
-# global variables
-nif_list_jobfile = "nif_list.job"
-dds_list_jobfile = "lowres_list.job"
-nif_joblist = dict()
-dds_joblist = list()
-# set up input/output path variables
-#input_root = "./"
-#input_path = input_root + ""
-if (os.environ.get("FARNIFAUTOGEN_INPUT_DATADIR") is not None):
-    input_datadir = os.environ["FARNIFAUTOGEN_INPUT_DATADIR"] + "/"
-else:
-#    input_datadir = "./data/"
-    input_datadir = "C:/SteamLibrary/steamapps/common/Oblivion/Data/"
-if "data/" in input_datadir.lower() or "data\\" in input_datadir.lower():
-    input_root = input_datadir.lower().replace("data/","")
-    input_root = input_root.lower().replace("data\\","")
-else:
-    input_root = input_datadir
-if (os.environ.get("FARNIFAUTOGEN_OUTPUT_DATADIR") is not None):
-    output_datadir = os.environ["FARNIFAUTOGEN_OUTPUT_DATADIR"] + "/"
-else:
-    output_datadir = "C:/FarNifAutoGen.output/data/"
-if "data/" in output_datadir.lower() or "data\\" in output_datadir.lower():
-    output_root = output_datadir.lower().replace("data/","")
-    output_root = output_root.lower().replace("data\\","")
-else:
-    output_root = output_datadir
-#output_root = outputRoot + "FarNifAutoGen.output/"
-#output_datadir = output_root + "data/"
-##print "DEBUG: input_datadir = " + input_datadir
-##print "DEBUG: input_root = " + input_root
-##print "DEBUG: output_datadir = " + output_datadir
-##print "DEBUG: output_root = " + output_root
-##raw_input()
 
 # set up helper-file variables
 blenderFilename = "empty.blend"
@@ -105,7 +133,10 @@ def debug_print(err_string):
         error_file.close()
 
 # launch blender
-def launchBlender(filename):
+def launchBlender(filename, reduction_scale_arg=0.95):
+    if (reduction_scale_arg >= 1.0):
+        debug_print("Blender PolyReduce(" + filename + "): reduction_scale >= 1.0.  Skipping file...")
+        return -1
     in_file = filename
     conversion_script = "FarNifAutoGen_blender_polyreduce.py"
     ## LOAD BLENDER HERE....
@@ -113,29 +144,53 @@ def launchBlender(filename):
     print "starting blender..." + in_file
     print "==================="
     #raw_input("DEBUG: PRESS ENTER TO BEGIN")
-    rc = subprocess.call([blenderPath, blenderFilename, "-p", "0", "0", "1", "1", "-P", conversion_script, "--", in_file,"--fullres_collisions", str(int(fullres_collisions))])
+    rc = subprocess.call([blenderPath, blenderFilename, "-p", "0", "0", "1", "1", "-P", conversion_script, "--", in_file,"--reduction_scale",str(reduction_scale_arg)])
     if (rc != 0):
-        print "Error launching blender: retrying with gui enabled..."
-        #raw_input("Press Enter to continue.")
-        rc = subprocess.call([blenderPath, blenderFilename, "-p", "0", "0", "1", "1", "-P", conversion_script, "--", in_file,"--fullres_collisions", str(int(fullres_collisions))])
-        if (rc != 0):
-            print "Unable to launch blender, logging error and skipping file..."
-            # log error and continue
-            error_list(in_file + " (launch error) could not start blender.")
-            return -1
+        print "Unable to launch blender, logging error and skipping file..."
+        # log error and continue
+        error_list(in_file + " (launch error) could not start blender.")
+        return -1
+    else:
+        return 0
 
 # launch gimp
-def launchGIMP(filename):
+def launchGIMP(filename, reduction_scale_arg=0.125):
     scriptfile = "FarNifAutoGen_gimp_lowres"
     bootstrap = "import sys;sys.path=['.']+sys.path;import " + scriptfile + ";" + scriptfile + ".run('" + filename + "')"
+#    bootstrap = "import sys;sys.path=['.']+sys.path;import " + scriptfile + ";" + scriptfile + ".run('" + filename + "', reduction_scale=" + reduction_scale_arg + ")"
     #debug_print("bootstrap=" + bootstrap)
     #print "====GIMP script bootstrap:=======\n" + bootstrap + "\n================\n"
     resultcode = subprocess.call([gimpPath, \
                           "-idf", "--batch-interpreter=python-fu-eval", \
                           "-b", bootstrap])
-#    os.remove(joblist)
     if (resultcode != 0):
         debug_print("GIMP processDDS(" + filename + ") ERROR: function failed.")
+        #print "ERROR: failed with resultcode=(" + str(resultcode) + ")"
+        # log error and continue
+#        debug_print(joblist + " failed: resultcode=(" + str(format(resultcode, '08x')) + ")\n")
+        return -1
+    else:
+#        debug_print(joblist + " success.\n")
+        return 0  
+
+# launch gimp
+def launchGIMP_jobpool(joblist_file, reduction_scale_arg=0.125):
+    scriptfile = "FarNifAutoGen_gimp_lowres"
+#    bootstrap = "import sys;sys.path=['.']+sys.path;import " + scriptfile + ";" + scriptfile + ".run_jobpool('" + joblist_file + "')"
+    bootstrap = "import sys;sys.path=['.']+sys.path;import " + scriptfile + ";" + scriptfile + ".run_jobpool('" + joblist_file + "',reduction_scale=" + str(reduction_scale_arg) + ")"
+    debug_print("bootstrap=" + bootstrap)
+    #print "====GIMP script bootstrap:=======\n" + bootstrap + "\n================\n"
+    resultcode = subprocess.call([gimpPath, \
+                          "-idf", "--batch-interpreter=python-fu-eval", \
+                          "-b", bootstrap])
+    try:
+        os.remove(joblist_file)
+    except OSError:
+        debug_print("OSError occured while trying to remove:" + output_root + temp_jobfile)
+        raw_input("Press ENTER to continue.")
+
+    if (resultcode != 0):
+        debug_print("GIMP process_jobpool(" + joblist_file + ") ERROR: function failed.")
         #print "ERROR: failed with resultcode=(" + str(resultcode) + ")"
         # log error and continue
 #        debug_print(joblist + " failed: resultcode=(" + str(format(resultcode, '08x')) + ")\n")
@@ -160,12 +215,12 @@ def main():
         ddsjob_stream.close()
 
     # read niflist.job
-    print "\n1a. Read the nif_list.job file"
+#    print "\n1a. Read the nif_list.job file"
     if not os.path.exists(nif_list_jobfile):
-        print "no nif joblist found. exiting."
+        print "joblist not found: " + nif_list_jobfile + ". Exiting."
         return()
     else:
-        print "joblist found"
+        print "joblist found: " + nif_list_jobfile
     nifjob_stream = open(nif_list_jobfile, "r")
     for line in nifjob_stream:
         line = line.rstrip("\r\n")
@@ -178,41 +233,43 @@ def main():
     nifjob_stream.close()
     
     # for each nif, process nif
-    print "\n1b. For each nif, process the nif file"
+#    print "\n1b. For each nif, process the nif file"
     if len(nif_joblist) == 0:
-        print "job list is empty"
+        print "joblist is empty."
     for filename in nif_joblist:
 #        print "processing: " + input_datadir + filename + " ... using ref_scale=" + str(nif_joblist[filename])
         if os.path.exists(input_datadir + filename):
  #           print " file found, calling processNif()..."
             # set global threshold of model radius?
-            do_output = FarNifAutoGen_processNif.processNif(filename, ref_scale=nif_joblist[filename], input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)
+            do_output = FarNifAutoGen_processNif.processNif(filename, radius_threshold_arg=model_radius_threshold, ref_scale=nif_joblist[filename], input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)
             # return calculated model radius to figure out to reduce?
             #... call blender polyreducer
             if do_output is True:
 #                print " DEBUG: spawn Blender polyreducer"
-                launchBlender(FarNifAutoGen_processNif.output_filename_path)
+                launchBlender(FarNifAutoGen_processNif.output_filename_path, reduction_scale_arg=nif_reduction_scale)
 #                raw_input("Press ENTER to continue.")
             else:
 #                print "processNIF failed."
-                debug_print("processNif(" + filename + ") ERROR: function failed.")
+                debug_print("processNif(" + filename + "): skipping polyreduce().")
         else:
             debug_print("processNif(" + filename + ") ERROR: file not found.")
 #            raw_input("Press ENTER to continue.")
 
     # read ddslist.job (lowres_list.job)
-    print "\n2a. Read the dds job file: " + output_root + dds_list_jobfile
+#    print "\n2a. Read the dds job file: " + output_root + dds_list_jobfile
     if not os.path.exists(output_root + dds_list_jobfile):
         print "no dds joblist found. skipping dds processing step."
     else:
-        print "joblist found"
+        print "dds joblist found."
         ddsjob_stream = open(output_root + dds_list_jobfile, "r")
         for line in ddsjob_stream:
             dds_filename = line.rstrip("\r\n")
-            dds_joblist.append(dds_filename)
+            if dds_filename not in dds_joblist:
+                dds_joblist.append(dds_filename)
         ddsjob_stream.close()
         # for each dds, process dds
 #        print "\n2b. For each dds, process the dds file"
+        # copy source DDS files to output folder
         for output_filename in dds_joblist:
             input_filename = output_filename.replace("lowres/", "")
 #            print "process dds file: " + input_datadir + input_filename
@@ -221,17 +278,31 @@ def main():
                 folderPath = os.path.dirname(output_datadir + output_filename)
                 if os.path.exists(folderPath) == False:
                     os.makedirs(folderPath)
-                shutil.copy(input_datadir + input_filename, output_datadir + output_filename)
+                try:
+                    shutil.copy(input_datadir + input_filename, output_datadir + output_filename)
+                except IOError:
+                    debug_print("processDDS(" + input_filename + ") ERROR: copy file to output_datadir failed. Skipping to next file...")
                 # call gimp resizer...
-                launchGIMP(output_datadir + output_filename)
+#                launchGIMP(output_datadir + output_filename)
             else:
 #                print "  file not found, skipping"
                 debug_print("processDDS(" + input_filename + ") ERROR: file not found.")
                 continue
-
+        # launch GIMP with joblist
+        # generate temp joblist
+        # TODO: split temp joblist into small pieces for multithreading
+        temp_jobfile = dds_list_jobfile.replace(".job","-temp.job")
+        ddsjob_stream = open(output_root + temp_jobfile, "w")
+        for line in dds_joblist:
+            ddsjob_stream.write(output_datadir + line + "\n")
+        ddsjob_stream.close()
+#        raw_input("Launching GIMP_jobpool....")
+        normalized_filepath = str(os.path.normpath(output_root + temp_jobfile)).replace("\\","/")
+        print "DEBUG: normalized_filepath=" + normalized_filepath
+        launchGIMP_jobpool(normalized_filepath,reduction_scale_arg=dds_reduction_scale)
     # complete
     print "\nFarNifAutoGen complete.\n"
-    raw_input("Press ENTER to continue.")
+    raw_input("Press ENTER to close window.")
 
 if __name__ == "__main__":
     main()
