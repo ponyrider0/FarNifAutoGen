@@ -29,10 +29,11 @@ def init_logger():
     #loghandler.setLevel(logging.DEBUG)
     #logformatter = logging.Formatter("%(name)s:%(levelname)s:%(message)s")
     #loghandler.setFormatter(logformatter)
-    pyffilogger.addHandler(loghandler)
+    #pyffilogger.addHandler(loghandler)
 
 def shutdown_logger():
-    pyffilogger.removeHandler(loghandler)
+    print ""
+    #pyffilogger.removeHandler(loghandler)
 
 def init_paths(input_datadir_arg=None, output_datadir_arg=None):
     global output_root
@@ -222,12 +223,12 @@ def output_ddslist():
     print "texture list: " + str(dds_list)
     #rename and copy textures to output stem...
     lowres_list_filename = "lowres_list.job"
-    ostream = open(output_root + lowres_list_filename, "wb")
+    ostream = open(output_root + lowres_list_filename, "a")
     for filename in dds_list:
         ostream.write(filename + "\n")
     ostream.close()
 
-def processNif(input_filename, input_datadir_arg=None, output_datadir_arg=None):
+def processNif(input_filename, ref_scale=float(1.0), input_datadir_arg=None, output_datadir_arg=None):
     global dds_list
     global model_radius
     global block_count
@@ -254,7 +255,7 @@ def processNif(input_filename, input_datadir_arg=None, output_datadir_arg=None):
                 process_NiTriShapeData(block)
                 calc_model_minmax()
     # if radius too small, skip
-    if model_radius < 400:
+    if (model_radius * ref_scale) < 400.0:
         #don't output
         print "model radius under threshold, skipping"
         do_output = False

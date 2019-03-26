@@ -44,7 +44,7 @@ if os.path.exists(gimpPath) == False:
 # global variables
 nif_list_jobfile = "nif_list.job"
 dds_list_jobfile = "lowres_list.job"
-nif_joblist = list()
+nif_joblist = dict()
 dds_joblist = list()
 # set up input/output path variables
 #input_root = "./"
@@ -133,6 +133,12 @@ def launchGIMP(filename):
 def main():
     print "Starting FarNifAutoGen..."
 
+    # reset dds_joblist
+    if (os.path.exists(output_path + dds_list_jobfile)):
+        os.remove(output_path + dds_list_jobfile)
+        ddsjob_stream = open(output_path + dds_list_jobfile, "wb")
+        ddsjob_stream.close()
+
     # read niflist.job
     print "\n1a. Read the nif_list.job file"
     if not os.path.exists(nif_list_jobfile):
@@ -142,26 +148,29 @@ def main():
         print "joblist found"
     nifjob_stream = open(nif_list_jobfile, "r")
     for line in nifjob_stream:
-        nif_filename =line.rstrip("\r\n")
-#        if os.path.exists(nif_filename):
-#            nif_joblist.append(nif_filename)
-        nif_joblist.append(nif_filename)
+        line = line.rstrip("\r\n")
+        nif_filename, ref_scale = line.split(',')
+        if nif_joblist.get(nif_filename) == None:
+            nif_joblist[nif_filename] = float(ref_scale)
+        else:
+            if ref_scale > nif_joblist[nif_filename]:
+                nif_joblist[nif_filename] = float(ref_scale)
     # for each nif, process nif
     print "\n1b. For each nif, process the nif file"
     if len(nif_joblist) == 0:
         print "job list is empty"
     for filename in nif_joblist:
-        print "processing: " + input_datadir + filename + "..."
+        print "processing: " + input_datadir + filename + " ... using ref_scale=" + str(nif_joblist[filename])
         if os.path.exists(input_datadir + filename):
             print " file found, calling processNif()..."
             # set global threshold of model radius?
-            do_output = FarNifAutoGen_processNif.processNif(filename, input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)
+            do_output = FarNifAutoGen_processNif.processNif(filename, ref_scale=nif_joblist[filename], input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)
             # return calculated model radius to figure out to reduce?
             #... call blender polyreducer
             if do_output is True:
                 print " DEBUG: spawn Blender polyreducer"
                 launchBlender(FarNifAutoGen_processNif.output_filename_path)
-                raw_input("Press ENTER to continue.")
+#                raw_input("Press ENTER to continue.")
             else:
                 print "processNIF failed."
         else:
