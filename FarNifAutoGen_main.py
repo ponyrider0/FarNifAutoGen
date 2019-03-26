@@ -15,7 +15,7 @@ import FarNifAutoGen_processNif
 
 # custom settings
 os.environ["BLENDEREXE"] = "C:/Blender/blender.exe"
-#os.environ["GIMPEXE"] = "C:/Blender/blender.exe"
+os.environ["FARNIFAUTOGEN_INPUT_DATADIR"] = "C:/Games/bsacmd/out/"
 
 # set up user-defined settings
 
@@ -54,18 +54,27 @@ if (os.environ.get("FARNIFAUTOGEN_INPUT_DATADIR") is not None):
 else:
 #    input_datadir = "./data/"
     input_datadir = "C:/SteamLibrary/steamapps/common/Oblivion/Data/"
-if "data/" in input_datadir:
-    input_root = input_datadir.lower()[:-len("data/")]
+if "data/" in input_datadir.lower() or "data\\" in input_datadir.lower():
+    input_root = input_datadir.lower().replace("data/","")
+    input_root = input_root.lower().replace("data\\","")
 else:
     input_root = input_datadir
-if (os.environ.get("FARNIFAUTOGEN_OUTPUTROOT") is not None):
-    outputRoot = os.environ["FARNIFAUTOGEN_OUTPUTROOT"] + "/"
+if (os.environ.get("FARNIFAUTOGEN_OUTPUT_DATADIR") is not None):
+    output_datadir = os.environ["FARNIFAUTOGEN_OUTPUT_DATADIR"] + "/"
 else:
-    outputRoot = "C:/"
-output_path = outputRoot + "FarNifAutoGen.output/"
-output_datadir = output_path + "data/"
-print "DEBUG: input_datadir = " + input_datadir
-print "DEBUG: output_datadir = " + output_datadir
+    output_datadir = "C:/FarNifAutoGen.output/data/"
+if "data/" in output_datadir.lower() or "data\\" in output_datadir.lower():
+    output_root = output_datadir.lower().replace("data/","")
+    output_root = output_root.lower().replace("data\\","")
+else:
+    output_root = output_datadir
+#output_root = outputRoot + "FarNifAutoGen.output/"
+#output_datadir = output_root + "data/"
+##print "DEBUG: input_datadir = " + input_datadir
+##print "DEBUG: input_root = " + input_root
+##print "DEBUG: output_datadir = " + output_datadir
+##print "DEBUG: output_root = " + output_root
+##raw_input()
 
 # set up helper-file variables
 blenderFilename = "empty.blend"
@@ -78,14 +87,20 @@ except NotImplementedError:
 fullres_collisions = True
 
 # error reporting
-error_filename = outputRoot + "FarNifAutoGen.output/error_list.txt"
+error_filename = output_root + "error_list.txt"
 def log_error(err_string):
-    with open(error_filename, "a") as error_file:
+    writemode = 'a'
+    if not os.path.exists(error_filename):
+        writemode = 'w'
+    with open(error_filename, writemode) as error_file:
         error_file.write(err_string + "\n")
 def debug_print(err_string):
     global error_filename
     print err_string
-    with open(error_filename, "a") as error_file:
+    writemode = 'a'
+    if not os.path.exists(error_filename):
+        writemode = 'w'
+    with open(error_filename, writemode) as error_file:
         error_file.write(err_string + "\n")
         error_file.close()
 
@@ -120,6 +135,7 @@ def launchGIMP(filename):
                           "-b", bootstrap])
 #    os.remove(joblist)
     if (resultcode != 0):
+        debug_print("GIMP processDDS(" + filename + ") ERROR: function failed.")
         #print "ERROR: failed with resultcode=(" + str(resultcode) + ")"
         # log error and continue
 #        debug_print(joblist + " failed: resultcode=(" + str(format(resultcode, '08x')) + ")\n")
@@ -133,10 +149,14 @@ def launchGIMP(filename):
 def main():
     print "Starting FarNifAutoGen..."
 
+    # set up output_dir
+    if os.path.exists(output_datadir) == False:
+        os.makedirs(output_datadir)
+
     # reset dds_joblist
-    if (os.path.exists(output_path + dds_list_jobfile)):
-        os.remove(output_path + dds_list_jobfile)
-        ddsjob_stream = open(output_path + dds_list_jobfile, "wb")
+    if (os.path.exists(output_root + dds_list_jobfile)):
+        os.remove(output_root + dds_list_jobfile)
+        ddsjob_stream = open(output_root + dds_list_jobfile, "wb")
         ddsjob_stream.close()
 
     # read niflist.job
@@ -155,46 +175,49 @@ def main():
         else:
             if ref_scale > nif_joblist[nif_filename]:
                 nif_joblist[nif_filename] = float(ref_scale)
+    nifjob_stream.close()
+    
     # for each nif, process nif
     print "\n1b. For each nif, process the nif file"
     if len(nif_joblist) == 0:
         print "job list is empty"
     for filename in nif_joblist:
-        print "processing: " + input_datadir + filename + " ... using ref_scale=" + str(nif_joblist[filename])
+#        print "processing: " + input_datadir + filename + " ... using ref_scale=" + str(nif_joblist[filename])
         if os.path.exists(input_datadir + filename):
-            print " file found, calling processNif()..."
+ #           print " file found, calling processNif()..."
             # set global threshold of model radius?
             do_output = FarNifAutoGen_processNif.processNif(filename, ref_scale=nif_joblist[filename], input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)
             # return calculated model radius to figure out to reduce?
             #... call blender polyreducer
             if do_output is True:
-                print " DEBUG: spawn Blender polyreducer"
+#                print " DEBUG: spawn Blender polyreducer"
                 launchBlender(FarNifAutoGen_processNif.output_filename_path)
 #                raw_input("Press ENTER to continue.")
             else:
-                print "processNIF failed."
+#                print "processNIF failed."
+                debug_print("processNif(" + filename + ") ERROR: function failed.")
         else:
-            print " ERROR: file not found."
+            debug_print("processNif(" + filename + ") ERROR: file not found.")
 #            raw_input("Press ENTER to continue.")
 
     # read ddslist.job (lowres_list.job)
-    print "\n2a. Read the dds job file: " + output_path + dds_list_jobfile
-    if not os.path.exists(output_path + dds_list_jobfile):
+    print "\n2a. Read the dds job file: " + output_root + dds_list_jobfile
+    if not os.path.exists(output_root + dds_list_jobfile):
         print "no dds joblist found. skipping dds processing step."
     else:
         print "joblist found"
-        ddsjob_stream = open(output_path + dds_list_jobfile, "r")
+        ddsjob_stream = open(output_root + dds_list_jobfile, "r")
         for line in ddsjob_stream:
             dds_filename = line.rstrip("\r\n")
             dds_joblist.append(dds_filename)
         ddsjob_stream.close()
         # for each dds, process dds
-        print "\n2b. For each dds, process the dds file"
+#        print "\n2b. For each dds, process the dds file"
         for output_filename in dds_joblist:
             input_filename = output_filename.replace("lowres/", "")
-            print "process dds file: " + input_datadir + input_filename
+#            print "process dds file: " + input_datadir + input_filename
             if os.path.exists(input_datadir + input_filename):
-                print "  file found."
+#                print "  file found."
                 folderPath = os.path.dirname(output_datadir + output_filename)
                 if os.path.exists(folderPath) == False:
                     os.makedirs(folderPath)
@@ -202,7 +225,8 @@ def main():
                 # call gimp resizer...
                 launchGIMP(output_datadir + output_filename)
             else:
-                print "  file not found, skipping"
+#                print "  file not found, skipping"
+                debug_print("processDDS(" + input_filename + ") ERROR: file not found.")
                 continue
 
     # complete

@@ -49,7 +49,7 @@ def init_paths(input_datadir_arg=None, output_datadir_arg=None):
     else:
         output_datadir = output_datadir_arg
         if "data/" in output_datadir_arg.lower():
-            output_root = output_datadir_arg[:-len("data/")]
+            output_root = output_datadir_arg.lower().replace("data/","")
         else:
             print "processNIF(): WARNING: output_datadir_arg does not contain a \"Data/\" directory, using output_data for output_root."
             output_root = output_datadir
@@ -101,7 +101,7 @@ def process_NiTriShapeData(block):
     global model_maxy
     global model_maxz
     global root0
-    print "TriShapeData at index:" + str(block_count)
+#    print "TriShapeData at index:" + str(block_count)
     root_chain = root0.find_chain(block)
     refnode = None
     for node in root_chain:
@@ -220,7 +220,7 @@ def output_niffile(nifdata, input_filename):
 def output_ddslist():
     global dds_list
     global output_root
-    print "texture list: " + str(dds_list)
+#    print "texture list: " + str(dds_list)
     #rename and copy textures to output stem...
     lowres_list_filename = "lowres_list.job"
     ostream = open(output_root + lowres_list_filename, "a")
@@ -230,14 +230,32 @@ def output_ddslist():
 
 def processNif(input_filename, ref_scale=float(1.0), input_datadir_arg=None, output_datadir_arg=None):
     global dds_list
+    global model_minx
+    global model_miny
+    global model_minz
+    global model_maxx
+    global model_maxy
+    global model_maxz
     global model_radius
     global block_count
     global root0
+    global output_filename_path
+    # intialize globals
     dds_list = list()
-    print ""
-    print "\nprocessNIF(): Processing " + input_filename + "..."
-    print ""
-    #global variables
+    model_minx = None
+    model_miny = None
+    model_minz = None
+    model_maxx = None
+    model_maxy = None
+    model_maxz = None
+    model_radius = None
+    block_count = None
+    root0 = None
+    output_filename_path = None
+
+#    print ""
+    print "\nprocessNIF(): Processing " + input_filename + " ..."
+#    print ""
     init_logger()
     init_paths(input_datadir_arg=input_datadir_arg, output_datadir_arg=output_datadir_arg)
     nifdata = load_nif(input_filename)
@@ -255,9 +273,12 @@ def processNif(input_filename, ref_scale=float(1.0), input_datadir_arg=None, out
                 process_NiTriShapeData(block)
                 calc_model_minmax()
     # if radius too small, skip
+    print "DEBUG: radius=" + str(model_radius) + ", ref_scale=" + str(ref_scale)
+    if (model_radius is None):
+        model_radius = 0
     if (model_radius * ref_scale) < 400.0:
         #don't output
-        print "model radius under threshold, skipping"
+        print "DEBUG: model radius under threshold, skipping " + input_filename
         do_output = False
     else:
         #output file....
@@ -266,7 +287,7 @@ def processNif(input_filename, ref_scale=float(1.0), input_datadir_arg=None, out
         output_niffile(nifdata, input_filename)
         output_ddslist()
     shutdown_logger()
-    print ""
-    print "processNIF(): complete."
-    print ""
+#    print ""
+#    print "processNIF(): complete."
+#    print ""
     return do_output
