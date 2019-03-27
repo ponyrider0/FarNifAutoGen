@@ -9,20 +9,19 @@ import pyffi.spells.nif.fix
 import pyffi.spells.nif.optimize
 
 # global variables
-model_minx = None
-model_miny = None
-model_minz = None
-model_maxx = None
-model_maxy = None
-model_maxz = None
-model_radius = None
-block_count = None
-root0 = None
-output_filename_path = None
+##model_minx = None
+##model_miny = None
+##model_minz = None
+##model_maxx = None
+##model_maxy = None
+##model_maxz = None
+##model_radius = None
+##block_count = None
+##root0 = None
+##output_filename_path = None
 
 def init_logger():
-    global pyffilogger
-    global loghandler
+#    print "init_logger() entered"
     pyffilogger = logging.getLogger("pyffi")
     loghandler = logging.StreamHandler()
     pyffilogger.setLevel(logging.ERROR)
@@ -30,46 +29,32 @@ def init_logger():
     #logformatter = logging.Formatter("%(name)s:%(levelname)s:%(message)s")
     #loghandler.setFormatter(logformatter)
     #pyffilogger.addHandler(loghandler)
+    return pyffilogger, loghandler
 
-def shutdown_logger():
+def shutdown_logger(pyffilogger, loghandler):
+#    print "shutdown_logger() entered"
     #pyffilogger.removeHandler(loghandler)
     return
 
-def init_paths(input_datadir_arg=None, output_datadir_arg=None):
-    global output_root
-    global output_datadir
-    global input_datadir
-    if input_datadir_arg is not None:
-        input_datadir = input_datadir_arg
+def init_paths(output_datadir_arg):
+#    print "init_paths() entered"
+    if "data/" in output_datadir_arg.lower() or "data\\" in output_datadir.lower():
+        output_root = output_datadir_arg.lower().replace("data/","")
+        output_root = output_root.replace("data\\","")
     else:
-        input_datadir = "./"
-    if output_datadir_arg is None:
-        output_root = "C:/FarNifAutoGen.output/"
-        output_datadir = output_root + "Data/"
-    else:
-        output_datadir = output_datadir_arg
-        if "data/" in output_datadir_arg.lower() or "data\\" in output_datadir.lower():
-            output_root = output_datadir_arg.lower().replace("data/","")
-            output_root = output_root.replace("data\\","")
-        else:
-            print "processNIF(): WARNING: output_datadir_arg does not contain a \"Data/\" directory, using output_data for output_root."
-#            raw_input("output_datadir_arg=" + output_datadir_arg)
-            output_root = output_datadir
-    if not os.path.exists(output_datadir):
-        os.makedirs(output_datadir)
+        output_root = output_datadir
+    return output_root
 
 def load_nif(input_filename):
-    global input_datadir
-#    input_filename = 'meshes/floraUbcUtreeU01.nif'
-    fstream = open(input_datadir+input_filename, 'rb')
+#    print "load_nif() entered"
+    fstream = open(input_filename, 'rb')
     x = NifFormat.Data()
     x.read(fstream)
     fstream.close()
-    #print x
     return x
 
-def process_NiSourceTexture(block):
-    global dds_list
+def process_NiSourceTexture(block, dds_list):
+#    print "process_NiSourceTexture() entered"
     # get texture filename
     texture_name = block.file_name
     # prefix "/lowres/"
@@ -81,8 +66,8 @@ def process_NiSourceTexture(block):
         if texture_name1[0] == '/':
             texture_name1 = texture_name1[1:]
     if "lowres/" in texture_name1:
-    #   print "texture filename: " + texture_name1 + " is already lowres"
-        return()
+#        print "texture filename: " + texture_name1 + " is already lowres"
+        return dds_list
     else:
         texture_name1 = "textures/lowres/" + texture_name1
     #   postfix "_lowres.dds"
@@ -94,16 +79,11 @@ def process_NiSourceTexture(block):
         block.file_name = texture_name1
     else:
         print "skipping, internal texture found: " + texture_name
+ #   print "leaving process_NiSourceTexture()"   
+    return dds_list
 
-def process_NiTriShapeData(block):
-    global model_minx
-    global model_miny
-    global model_minz
-    global model_maxx
-    global model_maxy
-    global model_maxz
-    global root0
-#    print "TriShapeData at index:" + str(block_count)
+def process_NiTriShapeData(block, root0, model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz):
+#    print "process_NiTriShapeData() entered"
     root_chain = root0.find_chain(block)
     refnode = None
     for node in root_chain:
@@ -111,9 +91,12 @@ def process_NiTriShapeData(block):
             refnode = node
     #       print "NiNode found in root chain: " + str(refnode.name)
             break
-        else:
-            print "no NiNodes found in root chain."
+#        else:
+#            print "no NiNodes found in root chain."
     #print "block chain: " + str(root_chain)
+    if (refnode is None):
+        print "process_NiTriShapeData(): ERROR! could not assign reference node in root chain"
+        return
     root_transform = root_chain[len(root_chain)-2].get_transform(refnode)
     #print root_transform
     block_maxx = block_minx = block.vertices[0].x
@@ -153,18 +136,11 @@ def process_NiTriShapeData(block):
         model_maxx = max(model_maxx, block_maxx)
         model_maxy = max(model_maxy, block_maxy)
         model_maxz = max(model_maxz, block_maxz)
+#    print "leaving process_NiTriShapeData()"
+    return model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz
 
-def calc_model_minmax():
-    global model_radius
-    global model_minx
-    global model_miny
-    global model_minz
-    global model_maxx
-    global model_maxy
-    global model_maxz
-    #print "model min-max:"
-    #print "(%s, %s, %s)" %(model_minx, model_miny, model_minz)
-    #print "(%s, %s, %s)" % (model_maxx, model_maxy, model_maxz)
+def calc_model_minmax(model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz):
+#    print "calc_model_minmax() entered"
     dx = abs(model_maxx - model_minx)
     dx2 = dx*dx
     dy = abs(model_maxy - model_miny)
@@ -173,11 +149,12 @@ def calc_model_minmax():
     dz2 = dz*dz
     model_radius = (dx2 + dy2 + dz2) ** 0.5
     model_radius = model_radius / 2
-    print "model radius = " + str(model_radius)
+    print "calc_model_minmax: model radius = " + str(model_radius)
+    return float(model_radius)
 
-def optimize_nifdata(nifdata):
+def optimize_nifdata(x):
+#    print "optimize_nifdata() entered"
     print "optimizing Far Nif...."
-    x = nifdata
     pyffi.spells.nif.modify.SpellDelVertexColorProperty(data=x).recurse()
     pyffi.spells.nif.modify.SpellDelBSXFlags(data=x).recurse()
     pyffi.spells.nif.modify.SpellDelStringExtraDatas(data=x).recurse()
@@ -185,13 +162,12 @@ def optimize_nifdata(nifdata):
     pyffi.spells.nif.modify.SpellDelCollisionData(data=x).recurse()
     pyffi.spells.nif.modify.SpellDisableParallax(data=x).recurse()
     pyffi.spells.nif.optimize.SpellOptimizeGeometry(data=x).recurse()
-
-def output_niffile(nifdata, input_filename):
+#    print "leaving optimize_nifdata()"
+    
+def output_niffile(nifdata, input_filename, output_datadir):
+#    print "output_niffile() entered"
     #compose output filename
     #output postfix to filename
-    global output_path
-    global output_filename_path
-    x = nifdata
     output_filename = input_filename[:-4] + "_far.nif"
     output_filename_path = output_datadir + output_filename
 #    print "output local path: " + output_filename
@@ -202,26 +178,15 @@ def output_niffile(nifdata, input_filename):
             os.makedirs(folderPath)
     except:
         print "processNif() ERROR: could not create destination directory: " + folderPath
-#        error_list(in_file + "Export ERROR: could not create destination directory: " + folderPath)    
-##    output_dirs = output_filename.split("/")
-##    output_string_path = output_datadir
-##    for dir_string in output_dirs:
-##        if "_far.nif" in dir_string:
-##            break
-##        else:
-##            output_string_path = output_string_path + dir_string + "/"
-##            if not os.path.exists(output_string_path):
-##                os.mkdir(output_string_path)
-    #print output filename
-    #export to output filename
     print "outputing: " + output_filename
     ostream = open(output_filename_path, 'wb')
-    x.write(ostream)
+    nifdata.write(ostream)
     ostream.close()
+#    print "leaving output_niffile()"
+    return output_filename_path
 
-def output_ddslist():
-    global dds_list
-    global output_root
+def output_ddslist(dds_list, output_root):
+#    print "output_ddslist() entered"
 #    print "texture list: " + str(dds_list)
     #rename and copy textures to output stem...
     lowres_list_filename = "lowres_list.job"
@@ -229,19 +194,10 @@ def output_ddslist():
     for filename in dds_list:
         ostream.write(filename + "\n")
     ostream.close()
-
+#    print "leaving output_ddslist()"
+    
 def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0), input_datadir_arg=None, output_datadir_arg=None):
-    global dds_list
-    global model_minx
-    global model_miny
-    global model_minz
-    global model_maxx
-    global model_maxy
-    global model_maxz
-    global model_radius
-    global block_count
-    global root0
-    global output_filename_path
+#    print "\n\nprocessNif() entered"
     # intialize globals
     dds_list = list()
     model_minx = None
@@ -256,9 +212,11 @@ def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0),
     output_filename_path = None
 
     print "processNIF(): Processing " + input_filename + " ..."
-    init_logger()
-    init_paths(input_datadir_arg=input_datadir_arg, output_datadir_arg=output_datadir_arg)
-    nifdata = load_nif(input_filename)
+    pyffilogger, loghandler = init_logger()
+    output_root = init_paths(output_datadir_arg)
+
+#    print "load_nif(input_filename)"
+    nifdata = load_nif(input_datadir_arg + input_filename)
     index_counter = -1
     root0 = nifdata.roots[0]
     for root in nifdata.roots:
@@ -268,26 +226,40 @@ def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0),
             index_counter = index_counter + 1
             block_count = index_counter
             if isinstance(block, NifFormat.NiSourceTexture):
-                process_NiSourceTexture(block)
+#                print "process_NiSourceTexture(block)"
+                dds_list = process_NiSourceTexture(block, dds_list)
             if isinstance(block, NifFormat.NiTriShapeData):
-                process_NiTriShapeData(block)
+#                print "process_NiTriShapeData(block)"
+                model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz = process_NiTriShapeData(block, root0, model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)
     if (model_minx is not None):
-        calc_model_minmax()
+#        print "calling calc_model_minmax()"
+        model_radius = calc_model_minmax(model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)
+
+    ref_scale = float(ref_scale)
+    radius_threshold_arg = float(radius_threshold_arg)
+        
+#    print "DEBUG: model_radius = " + str(model_radius)
+#    print "DEBUG: ref_scale = " + str(ref_scale)
+#    print "DEBUG: radius_threshold_arg = " + str(radius_threshold_arg)
+    
     # if radius too small, skip
 #    print "DEBUG: radius=" + str(model_radius) + ", ref_scale=" + str(ref_scale)
     if (model_radius is None):
-        do_output = False
-        print "ERROR: no model_radius calculated, unsupported NIF file."
+#        print "ERROR: no model_radius calculated, unsupported NIF file."
+        do_output = -1
     elif (model_radius * ref_scale) < radius_threshold_arg:
-        #don't output
 #        print "DEBUG: model radius under threshold for [" + input_filename + "]"
-        do_output = False
+        do_output = 0
     else:
         #output file....
-        do_output = True
+        do_output = 1
+#        print "calling optimize_nifdata(nifdata)"
         optimize_nifdata(nifdata)
-        output_niffile(nifdata, input_filename)
-        output_ddslist()
-    shutdown_logger()
+#        print "calling output_niffile(nifdata, input_filename, output_datadir)"
+        output_niffile(nifdata, input_filename, output_datadir_arg)
+#        print "calling output_ddslist(dds_list)"
+        output_ddslist(dds_list, output_root)
+#    print "calling shutdown_logger()"
+    shutdown_logger(pyffilogger, loghandler)
 #    print "processNIF(): complete."
     return do_output

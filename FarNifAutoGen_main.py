@@ -31,7 +31,6 @@ else:
 ##print "DEBUG: model_radius_threshold = " + str(model_radius_threshold)
 ##raw_input("Press ENTER to continue...")
 
-
 # custom settings
 os.environ["BLENDEREXE"] = "C:/Blender/blender.exe"
 os.environ["FARNIFAUTOGEN_INPUT_DATADIR"] = "C:/Games/bsacmd/out/"
@@ -41,6 +40,7 @@ nif_list_jobfile = "nif_list.job"
 dds_list_jobfile = "lowres_list.job"
 nif_joblist = dict()
 dds_joblist = list()
+temp_lookup_file = "lookup_table.tmp"
 
 # set up input/output path variables
 #input_root = "./"
@@ -81,7 +81,6 @@ else:
 ##print "DEBUG: output_root = " + output_root
 ##raw_input()
     
-    
 # set up executable path variables
 if (os.environ.get("BLENDEREXE") is not None):
     blenderPath = os.environ["BLENDEREXE"]
@@ -109,10 +108,10 @@ blenderFilename = "empty.blend"
 
 # set up multiprocessing settings
 try:
+#    CPU_COUNT = 1
     CPU_COUNT = multiprocessing.cpu_count()
 except NotImplementedError:
     CPU_COUNT = 1
-fullres_collisions = True
 
 # error reporting
 error_filename = output_root + "error_list.txt"
@@ -199,9 +198,74 @@ def launchGIMP_jobpool(joblist_file, reduction_scale_arg=0.125):
 #        debug_print(joblist + " success.\n")
         return 0  
 
+def perform_job_processNif(filename):
+    global input_datadir
+    global output_datadir
+    global model_radius_threshold
+    global nif_reduction_scale
+
+#    print "perform_job_test: filename = " + str(filename)
+#    print "DEBUG: input_datadir= " + str(input_datadir)
+#    print "DEBUG: output_datadir= " + str(output_datadir)
+#    print "DEBUG: opening temp lookup table: " + temp_lookup_file
+#    print "DEBUG: model_radius_threshold=" + str(model_radius_threshold)
+#    print "DEBUG: nif_reduction_scale=" + str(nif_reduction_scale)
+    lookup_stream = open(temp_lookup_file, "r")
+    ref_scale = None
+    for line in lookup_stream:
+        if filename in line:
+            key,ref_scale = line.split(':',1)
+            break
+    lookup_stream.close()
+    if ref_scale is None:
+        print "ERROR: QUITTING!!!"
+        return
+    if os.path.exists(input_datadir + filename):
+#        print " file found, calling processNif()..."
+        do_output = FarNifAutoGen_processNif.processNif(filename, radius_threshold_arg=model_radius_threshold, ref_scale=ref_scale, input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)
+        #... call blender polyreducer
+        if do_output == 1:
+            debug_print(" DEBUG: spawn Blender polyreducer... (placeholder)")
+            ## ====== leave a TODO file to polyreduce file ======= ##
+#            launchBlender(FarNifAutoGen_processNif.output_filename_path, reduction_scale_arg=nif_reduction_scale)
+#                raw_input("Press ENTER to continue.")
+        elif do_output == 0:
+            debug_print("processNif(" + filename + "): model radius below user-defined threshold, skipping.")
+#                print "processNIF failed."
+        elif do_output == -1:
+            debug_print("processNif(" + filename + "): unsupported file.  Skipping.")
+    else:
+        debug_print("processNif(" + filename + ") ERROR: file not found.")
+    print "perform_job_processNif() complete. <============== "
+
+def perform_job_test(filename):
+    global input_datadir
+    global nif_joblist
+    global model_radius_threshold
+    global output_datadir
+    global nif_reduction_scale
+    print "perform_job_test: filename = " + str(filename)
+    print "DEBUG: " + str(input_datadir) + "," + str(len(nif_joblist)) + "," + str(model_radius_threshold) + "," + str(output_datadir)
+    return
+
+def jobpool_processNif(jobpool):
+    print "DEBUG: CPU_COUNT = " + str(CPU_COUNT)
+    print "DEBUG: jobpool size = " + str(len(jobpool))
+    raw_input("press ENTER to continue...")
+    pool = multiprocessing.Pool(processes=CPU_COUNT)
+    result = pool.map_async(perform_job_processNif, jobpool, 1)
+    try:
+        result.wait(timeout=99999999)
+        pool.close()
+        pool.join()
+    except KeyboardInterrupt:
+        return(-1)
+    return 0
 
 # main
 def main():
+    global nif_joblist
+    
     print "Starting FarNifAutoGen..."
 
     # set up output_dir
@@ -231,29 +295,53 @@ def main():
             if ref_scale > nif_joblist[nif_filename]:
                 nif_joblist[nif_filename] = float(ref_scale)
     nifjob_stream.close()
+
+    # create filename lookup table for multiprocessing
+    lookup_stream = open(temp_lookup_file, "w")
+    for key, value in nif_joblist.items():
+        lookup_stream.write('%s:%s\n' % (key, value))
+    lookup_stream.close()
     
     # for each nif, process nif
 #    print "\n1b. For each nif, process the nif file"
     if len(nif_joblist) == 0:
         print "joblist is empty."
-    for filename in nif_joblist:
-#        print "processing: " + input_datadir + filename + " ... using ref_scale=" + str(nif_joblist[filename])
-        if os.path.exists(input_datadir + filename):
- #           print " file found, calling processNif()..."
-            # set global threshold of model radius?
-            do_output = FarNifAutoGen_processNif.processNif(filename, radius_threshold_arg=model_radius_threshold, ref_scale=nif_joblist[filename], input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)
-            # return calculated model radius to figure out to reduce?
-            #... call blender polyreducer
-            if do_output is True:
-#                print " DEBUG: spawn Blender polyreducer"
-                launchBlender(FarNifAutoGen_processNif.output_filename_path, reduction_scale_arg=nif_reduction_scale)
-#                raw_input("Press ENTER to continue.")
-            else:
-#                print "processNIF failed."
-                debug_print("processNif(" + filename + "): skipping polyreduce().")
-        else:
-            debug_print("processNif(" + filename + ") ERROR: file not found.")
-#            raw_input("Press ENTER to continue.")
+
+    # convert nif_joblist to jobpool
+    jobpool = list()
+    for line in nif_joblist:
+        jobpool.append(line)
+    # run jobpool
+#    if jobpool_processNif(jobpool) == -1:
+#        print "ERROR: jobpool processNif() interrupted."
+    print "DEBUG: CPU_COUNT = " + str(CPU_COUNT)
+    print "DEBUG: jobpool size = " + str(len(jobpool))
+
+    pool = multiprocessing.Pool(processes=CPU_COUNT)
+    result = pool.map_async(perform_job_processNif, jobpool)
+#    result = pool.map_async(perform_job_test, jobpool)
+    try:
+        result.wait(timeout=99999999)
+        pool.close()
+        pool.join()
+    except KeyboardInterrupt:
+        print "ERROR: jobpool processNif() interrupted."
+
+##    for filename in nif_joblist:
+###        print "processing: " + input_datadir + filename + " ... using ref_scale=" + str(nif_joblist[filename])
+##        if os.path.exists(input_datadir + filename):
+## #           print " file found, calling processNif()..."
+##            do_output = FarNifAutoGen_processNif.processNif(filename, radius_threshold_arg=model_radius_threshold, ref_scale=nif_joblist[filename], input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)
+##            #... call blender polyreducer
+##            if do_output is True:
+###                print " DEBUG: spawn Blender polyreducer"
+##                launchBlender(FarNifAutoGen_processNif.output_filename_path, reduction_scale_arg=nif_reduction_scale)
+###                raw_input("Press ENTER to continue.")
+##            else:
+###                print "processNIF failed."
+##                debug_print("processNif(" + filename + "): skipping polyreduce().")
+##        else:
+##            debug_print("processNif(" + filename + ") ERROR: file not found.")
 
     # read ddslist.job (lowres_list.job)
 #    print "\n2a. Read the dds job file: " + output_root + dds_list_jobfile
