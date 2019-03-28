@@ -96,8 +96,14 @@ def process_NiTriShapeData(block, root0, model_minx, model_miny, model_minz, mod
     #print "block chain: " + str(root_chain)
     if (refnode is None):
         print "process_NiTriShapeData(): ERROR! could not assign reference node in root chain"
-        return
-    root_transform = root_chain[len(root_chain)-2].get_transform(refnode)
+        return model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz
+    parent_node = root_chain[len(root_chain)-2]
+    if isinstance(parent_node, NifFormat.NiAVObject):
+        root_transform = root_chain[len(root_chain)-2].get_transform(refnode)
+    else:
+#        print "process_NiTriShapeData(): parent node does not have transform data, skipping block..."
+        return model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz
+
     #print root_transform
     block_maxx = block_minx = block.vertices[0].x
     block_maxy = block_miny = block.vertices[0].y
@@ -228,7 +234,7 @@ def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0),
             if isinstance(block, NifFormat.NiSourceTexture):
 #                print "process_NiSourceTexture(block)"
                 dds_list = process_NiSourceTexture(block, dds_list)
-            if isinstance(block, NifFormat.NiTriShapeData):
+            if isinstance(block, NifFormat.NiTriShapeData) or isinstance(block,NifFormat.NiTriStripsData):
 #                print "process_NiTriShapeData(block)"
                 model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz = process_NiTriShapeData(block, root0, model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)
     if (model_minx is not None):

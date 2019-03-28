@@ -248,19 +248,6 @@ def perform_job_test(filename):
     print "DEBUG: " + str(input_datadir) + "," + str(len(nif_joblist)) + "," + str(model_radius_threshold) + "," + str(output_datadir)
     return
 
-def jobpool_processNif(jobpool):
-    print "DEBUG: CPU_COUNT = " + str(CPU_COUNT)
-    print "DEBUG: jobpool size = " + str(len(jobpool))
-    raw_input("press ENTER to continue...")
-    pool = multiprocessing.Pool(processes=CPU_COUNT)
-    result = pool.map_async(perform_job_processNif, jobpool, 1)
-    try:
-        result.wait(timeout=99999999)
-        pool.close()
-        pool.join()
-    except KeyboardInterrupt:
-        return(-1)
-    return 0
 
 # main
 def main():
@@ -301,12 +288,6 @@ def main():
     for key, value in nif_joblist.items():
         lookup_stream.write('%s:%s\n' % (key, value))
     lookup_stream.close()
-    
-    # for each nif, process nif
-#    print "\n1b. For each nif, process the nif file"
-    if len(nif_joblist) == 0:
-        print "joblist is empty."
-
     # convert nif_joblist to jobpool
     jobpool = list()
     for line in nif_joblist:
@@ -316,7 +297,6 @@ def main():
 #        print "ERROR: jobpool processNif() interrupted."
     print "DEBUG: CPU_COUNT = " + str(CPU_COUNT)
     print "DEBUG: jobpool size = " + str(len(jobpool))
-
     pool = multiprocessing.Pool(processes=CPU_COUNT)
     result = pool.map_async(perform_job_processNif, jobpool)
 #    result = pool.map_async(perform_job_test, jobpool)
@@ -326,6 +306,7 @@ def main():
         pool.join()
     except KeyboardInterrupt:
         print "ERROR: jobpool processNif() interrupted."
+
 
 ##    for filename in nif_joblist:
 ###        print "processing: " + input_datadir + filename + " ... using ref_scale=" + str(nif_joblist[filename])
