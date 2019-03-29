@@ -103,7 +103,7 @@ def resize_lowres(file_path, reduction_factor_arg=8):
     debug_output("DEBUG: saving: " + file_path + "...")
     pdb.file_dds_save(image, image.active_layer, #image, drawyable/layer
                       file_path, filename, #filename, raw-filename
-                      1, # compression: 0=none, 1=bc1/dxt1, 2=bc2/dxt3, 3=bc3/dxt5, 4=BC3n/dxt5nm, ... 8=alpha exponent... 
+                      3, # compression: 0=none, 1=bc1/dxt1, 2=bc2/dxt3, 3=bc3/dxt5, 4=BC3n/dxt5nm, ... 8=alpha exponent... 
                       1, # mipmaps: 0=no mipmaps, 1=generate mipmaps, 2=use existing mipmaps(layers)
                       0, # savetype: 0=selected layer, 1=cube map, 2=volume map, 3=texture array
                       0, # format: 0=default, 1=R5G6B5, 2=RGBA4, 3=RGB5A1, 4=RGB10A2

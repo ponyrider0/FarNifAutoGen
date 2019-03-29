@@ -269,3 +269,4 @@ def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0),
     shutdown_logger(pyffilogger, loghandler)
 #    print "processNIF(): complete."
     return do_output
+
