@@ -13,7 +13,21 @@ import FarNifAutoGen_processNif
 #from FarNifAutoGen_processNif import processNif
 #from FarNifAutoGen_processNif import output_filename_path
 
+# custom settings
+os.environ["BLENDEREXE"] = "C:/Blender/blender.exe"
+os.environ["FARNIFAUTOGEN_INPUT_DATADIR"] = "C:/Games/bsacmd/out/"
+#nif_list_jobfile = "nif_list.job"
+#dds_list_jobfile = "lowres_list.job"
+
 # set up user-defined settings
+if (os.environ.get("NIF_JOBLIST_FILE") is not None):
+    nif_list_jobfile = os.environ["NIF_JOBLIST_FILE"]
+else:
+    nif_list_jobfile = "nif_list.job"
+if (os.environ.get("DDS_JOBLIST_FILE") is not None):
+    dds_list_jobfile = os.environ["DDS_JOBLIST_FILE"]
+else:
+    dds_list_jobfile = "lowres_list.job"
 if (os.environ.get("NIF_REDUCTION_SCALE") is not None):
     nif_reduction_scale = float(os.environ["NIF_REDUCTION_SCALE"])
 else:
@@ -31,13 +45,7 @@ else:
 ##print "DEBUG: model_radius_threshold = " + str(model_radius_threshold)
 ##raw_input("Press ENTER to continue...")
 
-# custom settings
-os.environ["BLENDEREXE"] = "C:/Blender/blender.exe"
-os.environ["FARNIFAUTOGEN_INPUT_DATADIR"] = "C:/Games/bsacmd/out/"
-    
 # global variables
-nif_list_jobfile = "nif_list.job"
-dds_list_jobfile = "lowres_list.job"
 nif_joblist = dict()
 dds_joblist = list()
 temp_lookup_file = "lookup_table.tmp"
@@ -163,7 +171,7 @@ def launchGIMP(filename, reduction_scale_arg=0.125):
                           "-idf", "--batch-interpreter=python-fu-eval", \
                           "-b", bootstrap])
     if (resultcode != 0):
-        debug_print("GIMP processDDS(" + filename + ") ERROR: function failed.")
+        debug_print("GIMP (" + filename + ") ERROR: function failed.")
         #print "ERROR: failed with resultcode=(" + str(resultcode) + ")"
         # log error and continue
 #        debug_print(joblist + " failed: resultcode=(" + str(format(resultcode, '08x')) + ")\n")
@@ -283,7 +291,7 @@ def main():
                 nif_joblist[nif_filename] = float(ref_scale)
     nifjob_stream.close()
 
-    # create filename lookup table for multiprocessing
+    #===== Multi-threaded processNif() =======
     lookup_stream = open(temp_lookup_file, "w")
     for key, value in nif_joblist.items():
         lookup_stream.write('%s:%s\n' % (key, value))
@@ -308,6 +316,7 @@ def main():
         print "ERROR: jobpool processNif() interrupted."
 
 
+##    #======= Single-threaded processNif() ========
 ##    for filename in nif_joblist:
 ###        print "processing: " + input_datadir + filename + " ... using ref_scale=" + str(nif_joblist[filename])
 ##        if os.path.exists(input_datadir + filename):
@@ -324,6 +333,7 @@ def main():
 ##        else:
 ##            debug_print("processNif(" + filename + ") ERROR: file not found.")
 
+
     # read ddslist.job (lowres_list.job)
 #    print "\n2a. Read the dds job file: " + output_root + dds_list_jobfile
     if not os.path.exists(output_root + dds_list_jobfile):
@@ -339,7 +349,8 @@ def main():
         # for each dds, process dds
 #        print "\n2b. For each dds, process the dds file"
         # copy source DDS files to output folder
-        for output_filename in dds_joblist:
+        for line in dds_joblist:
+            output_filename, tags = line.split(",", 1)
             input_filename = output_filename.replace("lowres/", "")
 #            print "process dds file: " + input_datadir + input_filename
             if os.path.exists(input_datadir + input_filename):
@@ -350,12 +361,12 @@ def main():
                 try:
                     shutil.copy(input_datadir + input_filename, output_datadir + output_filename)
                 except IOError:
-                    debug_print("processDDS(" + input_filename + ") ERROR: copy file to output_datadir failed. Skipping to next file...")
+                    debug_print("processDDS_joblist(" + input_filename + ") ERROR: copy file to output_datadir failed. Skipping to next file...")
                 # call gimp resizer...
 #                launchGIMP(output_datadir + output_filename)
             else:
 #                print "  file not found, skipping"
-                debug_print("processDDS(" + input_filename + ") ERROR: file not found.")
+                debug_print("processDDS_joblist(" + input_filename + ") ERROR: file not found.")
                 continue
         # launch GIMP with joblist
         # generate temp joblist

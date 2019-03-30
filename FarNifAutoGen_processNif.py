@@ -158,17 +158,23 @@ def calc_model_minmax(model_minx, model_miny, model_minz, model_maxx, model_maxy
     print "calc_model_minmax: model radius = " + str(model_radius)
     return float(model_radius)
 
-def optimize_nifdata(x):
-#    print "optimize_nifdata() entered"
-    print "optimizing Far Nif...."
+def cull_nifdata(x):
+#    print "culling Far Nif...."
     pyffi.spells.nif.modify.SpellDelVertexColorProperty(data=x).recurse()
+    pyffi.spells.nif.modify.SpellDelSpecularProperty(data=x).recurse()
     pyffi.spells.nif.modify.SpellDelBSXFlags(data=x).recurse()
     pyffi.spells.nif.modify.SpellDelStringExtraDatas(data=x).recurse()
     pyffi.spells.nif.fix.SpellDelTangentSpace(data=x).recurse()
+    pyffi.spells.nif.modify.SpellDelAnimation(data=x).recurse()
     pyffi.spells.nif.modify.SpellDelCollisionData(data=x).recurse()
     pyffi.spells.nif.modify.SpellDisableParallax(data=x).recurse()
+    return x
+
+def optimize_nifdata(x):
+#    print "optimize_nifdata() entered"
     pyffi.spells.nif.optimize.SpellOptimizeGeometry(data=x).recurse()
 #    print "leaving optimize_nifdata()"
+    return x
     
 def output_niffile(nifdata, input_filename, output_datadir):
 #    print "output_niffile() entered"
@@ -191,20 +197,25 @@ def output_niffile(nifdata, input_filename, output_datadir):
 #    print "leaving output_niffile()"
     return output_filename_path
 
-def output_ddslist(dds_list, output_root):
+def output_ddslist(dds_list, output_root, has_alpha_prop):
 #    print "output_ddslist() entered"
 #    print "texture list: " + str(dds_list)
     #rename and copy textures to output stem...
+    if has_alpha_prop is True:
+        alpha_tag = "alpha=1"
+    else:
+        alpha_tag = "alpha=0"
     lowres_list_filename = "lowres_list.job"
     ostream = open(output_root + lowres_list_filename, "a")
     for filename in dds_list:
-        ostream.write(filename + "\n")
+        ostream.write(filename + "," + alpha_tag + "\n")
     ostream.close()
 #    print "leaving output_ddslist()"
     
 def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0), input_datadir_arg=None, output_datadir_arg=None):
 #    print "\n\nprocessNif() entered"
     # intialize globals
+    has_alpha_prop = False
     dds_list = list()
     model_minx = None
     model_miny = None
@@ -223,6 +234,7 @@ def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0),
 
 #    print "load_nif(input_filename)"
     nifdata = load_nif(input_datadir_arg + input_filename)
+    nifdata = cull_nifdata(nifdata)
     index_counter = -1
     root0 = nifdata.roots[0]
     for root in nifdata.roots:
@@ -231,6 +243,8 @@ def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0),
         for block in root.tree():
             index_counter = index_counter + 1
             block_count = index_counter
+            if isinstance(block, NifFormat.NiAlphaProperty):
+                has_alpha_prop = True
             if isinstance(block, NifFormat.NiSourceTexture):
 #                print "process_NiSourceTexture(block)"
                 dds_list = process_NiSourceTexture(block, dds_list)
@@ -240,6 +254,26 @@ def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0),
     if (model_minx is not None):
 #        print "calling calc_model_minmax()"
         model_radius = calc_model_minmax(model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)
+
+    if has_alpha_prop is False:
+        # add alpha property
+        # mark DDS for removal of alpha channel
+        # first, try to insert at roots if they are NiAVObjects
+        alpha_prop_added = False
+        alphablock = NifFormat.NiAlphaProperty()
+        alphablock.flags = 4844
+        alphablock.threshold = 0
+        for root in nifdata.roots:
+            if isinstance(root, NifFormat.NiAVObject):
+                root.add_property(alphablock)
+                alpha_prop_added = True
+        if alpha_prop_added is False:
+            for root in nifdata.roots:
+                for block in root.tree():
+                    if isinstance(block, NifFormat.NiAVObject):
+                        block.add_property(alphablock)
+                        alpha_prop_added = True
+                        break        
 
     ref_scale = float(ref_scale)
     radius_threshold_arg = float(radius_threshold_arg)
@@ -260,11 +294,11 @@ def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0),
         #output file....
         do_output = 1
 #        print "calling optimize_nifdata(nifdata)"
-        optimize_nifdata(nifdata)
+        nifdata = optimize_nifdata(nifdata)
 #        print "calling output_niffile(nifdata, input_filename, output_datadir)"
         output_niffile(nifdata, input_filename, output_datadir_arg)
 #        print "calling output_ddslist(dds_list)"
-        output_ddslist(dds_list, output_root)
+        output_ddslist(dds_list, output_root, has_alpha_prop)
 #    print "calling shutdown_logger()"
     shutdown_logger(pyffilogger, loghandler)
 #    print "processNIF(): complete."

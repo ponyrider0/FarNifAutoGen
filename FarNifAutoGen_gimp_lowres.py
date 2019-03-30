@@ -62,7 +62,7 @@ def fake_normalmap_file(filedir, filename):
 # - load image
 # - reduce to 64 x ____
 # - save as dds (dxt1?)
-def resize_lowres(file_path, reduction_factor_arg=8):
+def resize_lowres(file_path, reduction_factor_arg=8, tags=""):
     filename = os.path.basename(file_path)
     filedir = os.path.dirname(file_path) + "/"
     # load file
@@ -73,6 +73,19 @@ def resize_lowres(file_path, reduction_factor_arg=8):
         debug_output("ERROR trying to load: " + file_path + ", skipping...")
         return -1
         #pdb.gimp_quit(-1)
+    #check for alpha=0, white-out alpha
+    if "alpha=0" in tags:
+        gimp.set_foreground(255, 255, 255)
+        # create an alpha-transfer mask to change alpha channel
+        mask = pdb.gimp_layer_create_mask(image.layers[0], 3)
+        pdb.gimp_layer_add_mask(image.layers[0], mask)
+        # select mask with "replace selection"
+#        pdb.gimp_image_select_item(image, 2, mask)
+        # fill selection with foreground   
+        pdb.gimp_edit_fill(mask, 2)
+        # apply mask
+        pdb.gimp_layer_remove_mask(image.layers[0], 0)
+
     use_width = False
     width = image.width
     height = image.height
@@ -103,7 +116,7 @@ def resize_lowres(file_path, reduction_factor_arg=8):
     debug_output("DEBUG: saving: " + file_path + "...")
     pdb.file_dds_save(image, image.active_layer, #image, drawyable/layer
                       file_path, filename, #filename, raw-filename
-                      3, # compression: 0=none, 1=bc1/dxt1, 2=bc2/dxt3, 3=bc3/dxt5, 4=BC3n/dxt5nm, ... 8=alpha exponent... 
+                      1, # compression: 0=none, 1=bc1/dxt1, 2=bc2/dxt3, 3=bc3/dxt5, 4=BC3n/dxt5nm, ... 8=alpha exponent... 
                       1, # mipmaps: 0=no mipmaps, 1=generate mipmaps, 2=use existing mipmaps(layers)
                       0, # savetype: 0=selected layer, 1=cube map, 2=volume map, 3=texture array
                       0, # format: 0=default, 1=R5G6B5, 2=RGBA4, 3=RGB5A1, 4=RGB10A2
@@ -126,7 +139,8 @@ def run_jobpool(file_path, reduction_scale=0.125):
     stream = open(file_path, "r")
     for line in stream:
         line = line.strip("\r\n")
-        resize_lowres(line, reduction_factor_arg=float(1/reduction_scale))
+        filepath, tags = line.split(",", 1)
+        resize_lowres(filepath, reduction_factor_arg=float(1/reduction_scale), tags=tags)
     stream.close()
     #debug_output("DEBUG: GIMP run_jobpool(" + file_path + "): complete.")    
     pdb.gimp_quit(0)
