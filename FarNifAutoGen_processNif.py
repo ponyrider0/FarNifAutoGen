@@ -53,8 +53,15 @@ def load_nif(input_filename):
     fstream.close()
     return x
 
-def process_NiSourceTexture(block, dds_list):
+def process_NiSourceTexture(block, root0, dds_list):
 #    print "process_NiSourceTexture() entered"
+    # look for associated alpha property in block chain
+    dds_has_alpha = False
+    root_chain = root0.find_chain(block)
+    for node in root_chain:
+        if isinstance(node, NifFormat.NiAlphaProperty):
+            dds_has_alpha = True
+            break
     # get texture filename
     texture_name = block.file_name
     # prefix "/lowres/"
@@ -74,8 +81,8 @@ def process_NiSourceTexture(block, dds_list):
     #   if texture_name1.endswith(".dds"):
     #       texture_name1 = texture_name1[:-len(".dds")] + "_lowres.dds"
     if (block.use_external is 1):
-        if texture_name1 not in dds_list:
-            dds_list.append(texture_name1)
+        if not dds_list.get(texture_name1) == None:
+            dds_list[texture_name1] = bool(dds_has_alpha)
         block.file_name = texture_name1
     else:
         print "skipping, internal texture found: " + texture_name
@@ -197,26 +204,27 @@ def output_niffile(nifdata, input_filename, output_datadir):
 #    print "leaving output_niffile()"
     return output_filename_path
 
-def output_ddslist(dds_list, output_root, has_alpha_prop):
+def output_ddslist(dds_list, output_root):
 #    print "output_ddslist() entered"
 #    print "texture list: " + str(dds_list)
     #rename and copy textures to output stem...
-    if has_alpha_prop is True:
-        alpha_tag = "alpha=1"
-    else:
-        alpha_tag = "alpha=0"
     lowres_list_filename = "lowres_list.job"
     ostream = open(output_root + lowres_list_filename, "a")
-    for filename in dds_list:
+    for filename, has_alpha in dds_list:
+        if has_alpha is True:
+            alpha_tag = "alpha=1"
+        else:
+            alpha_tag = "alpha=0"
         ostream.write(filename + "," + alpha_tag + "\n")
     ostream.close()
 #    print "leaving output_ddslist()"
-    
+
 def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0), input_datadir_arg=None, output_datadir_arg=None):
 #    print "\n\nprocessNif() entered"
     # intialize globals
-    has_alpha_prop = False
-    dds_list = list()
+    model_has_alpha_prop = False
+#    dds_list = list()
+    dds_list = dict()
     model_minx = None
     model_miny = None
     model_minz = None
@@ -244,10 +252,10 @@ def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0),
             index_counter = index_counter + 1
             block_count = index_counter
             if isinstance(block, NifFormat.NiAlphaProperty):
-                has_alpha_prop = True
+                model_has_alpha_prop = True
             if isinstance(block, NifFormat.NiSourceTexture):
 #                print "process_NiSourceTexture(block)"
-                dds_list = process_NiSourceTexture(block, dds_list)
+                dds_list = process_NiSourceTexture(block, root0, dds_list)
             if isinstance(block, NifFormat.NiTriShapeData) or isinstance(block,NifFormat.NiTriStripsData):
 #                print "process_NiTriShapeData(block)"
                 model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz = process_NiTriShapeData(block, root0, model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)
@@ -255,7 +263,7 @@ def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0),
 #        print "calling calc_model_minmax()"
         model_radius = calc_model_minmax(model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)
 
-    if has_alpha_prop is False:
+    if model_has_alpha_prop is False:
         # add alpha property
         # mark DDS for removal of alpha channel
         # first, try to insert at roots if they are NiAVObjects
@@ -298,7 +306,7 @@ def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0),
 #        print "calling output_niffile(nifdata, input_filename, output_datadir)"
         output_niffile(nifdata, input_filename, output_datadir_arg)
 #        print "calling output_ddslist(dds_list)"
-        output_ddslist(dds_list, output_root, has_alpha_prop)
+        output_ddslist(dds_list, output_root)
 #    print "calling shutdown_logger()"
     shutdown_logger(pyffilogger, loghandler)
 #    print "processNIF(): complete."

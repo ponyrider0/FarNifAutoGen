@@ -50,7 +50,7 @@ else:
 nif_joblist = dict()
 dds_joblist = list()
 temp_lookup_file = "lookup_table.tmp"
-exclusions_list_file = "exclusions_list.txt"
+exclusions_list_file = "exclusions_list_test.txt"
 
 # set up input/output path variables
 #input_root = "./"
