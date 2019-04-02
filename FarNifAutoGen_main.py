@@ -50,7 +50,7 @@ else:
 nif_joblist = dict()
 dds_joblist = list()
 temp_lookup_file = "lookup_table.tmp"
-blacklist_file = "blacklist.txt"
+exclusions_list_file = "exclusions_list.txt"
 
 # set up input/output path variables
 #input_root = "./"
@@ -275,17 +275,17 @@ def main():
         ddsjob_stream = open(output_root + dds_list_jobfile, "wb")
         ddsjob_stream.close()
 
-    # read blacklist file
-    blacklist = list()
-    if os.path.exists(blacklist_file):
-        blacklist_stream = open(blacklist_file, "r")
-        for line in blacklist_stream:
+    # read exclusions list file
+    exclusions_list = list()
+    if os.path.exists(exclusions_list_file):
+        exclusions_list_stream = open(exclusions_list_file, "r")
+        for line in exclusions_list_stream:
             line = line.lower().rstrip("\r\n")
             line = str(os.path.normpath(line))
             line = line.replace("\\","/")
-            if line not in blacklist:
-                blacklist.append(line)
-        blacklist_stream.close()
+            if line not in exclusions_list:
+                exclusions_list.append(line)
+        exclusions_list_stream.close()
 
     # read niflist.job
 #    print "\n1a. Read the nif_list.job file"
@@ -300,8 +300,8 @@ def main():
         nif_filename, ref_scale = line.split(',')
         nif_filename = str(os.path.normpath(nif_filename))
         nif_filename = nif_filename.replace("\\","/")
-        if nif_filename in blacklist:
-#            raw_input("BLACKLIST TRIGGERED, press ENTER to continue.")
+        if nif_filename in exclusions_list:
+#            raw_input("EXCLUSIONS LIST TRIGGERED, press ENTER to continue.")
             continue
         if nif_joblist.get(nif_filename) == None:
             nif_joblist[nif_filename] = float(ref_scale)
@@ -374,8 +374,8 @@ def main():
             output_filename, tags = line.split(",", 1)
             output_filename = output_filename.replace("\\","/")
             input_filename = output_filename.replace("lowres/", "")
-            if input_filename in blacklist:
-#                raw_input("BLACKLIST TRIGGERED (DDS), press ENTER to continue.")
+            if input_filename in exclusions_list:
+#                raw_input("EXCLUSIONS LIST TRIGGERED (DDS), press ENTER to continue.")
                 continue
 #            print "process dds file: " + input_datadir + input_filename
             if os.path.exists(input_datadir + input_filename):
