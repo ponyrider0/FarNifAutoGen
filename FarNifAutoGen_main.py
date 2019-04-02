@@ -14,10 +14,11 @@ import FarNifAutoGen_processNif
 #from FarNifAutoGen_processNif import output_filename_path
 
 # custom settings
-os.environ["BLENDEREXE"] = "C:/Blender/blender.exe"
-os.environ["FARNIFAUTOGEN_INPUT_DATADIR"] = "C:/Games/bsacmd/out/"
-#nif_list_jobfile = "nif_list.job"
-#dds_list_jobfile = "lowres_list.job"
+#os.environ["BLENDEREXE"] = "C:/Blender/blender.exe"
+#os.environ["FARNIFAUTOGEN_INPUT_DATADIR"] = "C:/Games/bsacmd/out/"
+#os.environ["NIF_JOBLIST_FILE"] = "nif_list_vivec.job"
+#os.environ["DDS_JOBLIST_FILE"] = "lowres_list.job"
+multiprocessing_on = True
 
 # set up user-defined settings
 if (os.environ.get("NIF_JOBLIST_FILE") is not None):
@@ -49,6 +50,7 @@ else:
 nif_joblist = dict()
 dds_joblist = list()
 temp_lookup_file = "lookup_table.tmp"
+blacklist_file = "blacklist.txt"
 
 # set up input/output path variables
 #input_root = "./"
@@ -224,9 +226,9 @@ def perform_job_processNif(filename):
         if filename in line:
             key,ref_scale = line.split(':',1)
             break
-    lookup_stream.close()
+    lookup_stream.close()    
     if ref_scale is None:
-        print "ERROR: QUITTING!!!"
+        print "ERROR: Could not parse lookup table! Quitting..."
         return
     if os.path.exists(input_datadir + filename):
 #        print " file found, calling processNif()..."
@@ -273,6 +275,18 @@ def main():
         ddsjob_stream = open(output_root + dds_list_jobfile, "wb")
         ddsjob_stream.close()
 
+    # read blacklist file
+    blacklist = list()
+    if os.path.exists(blacklist_file):
+        blacklist_stream = open(blacklist_file, "r")
+        for line in blacklist_stream:
+            line = line.lower().rstrip("\r\n")
+            line = str(os.path.normpath(line))
+            line = line.replace("\\","/")
+            if line not in blacklist:
+                blacklist.append(line)
+        blacklist_stream.close()
+
     # read niflist.job
 #    print "\n1a. Read the nif_list.job file"
     if not os.path.exists(nif_list_jobfile):
@@ -282,8 +296,13 @@ def main():
         print "joblist found: " + nif_list_jobfile
     nifjob_stream = open(nif_list_jobfile, "r")
     for line in nifjob_stream:
-        line = line.rstrip("\r\n")
+        line = line.lower().rstrip("\r\n")
         nif_filename, ref_scale = line.split(',')
+        nif_filename = str(os.path.normpath(nif_filename))
+        nif_filename = nif_filename.replace("\\","/")
+        if nif_filename in blacklist:
+#            raw_input("BLACKLIST TRIGGERED, press ENTER to continue.")
+            continue
         if nif_joblist.get(nif_filename) == None:
             nif_joblist[nif_filename] = float(ref_scale)
         else:
@@ -291,47 +310,47 @@ def main():
                 nif_joblist[nif_filename] = float(ref_scale)
     nifjob_stream.close()
 
-    #===== Multi-threaded processNif() =======
-    lookup_stream = open(temp_lookup_file, "w")
-    for key, value in nif_joblist.items():
-        lookup_stream.write('%s:%s\n' % (key, value))
-    lookup_stream.close()
-    # convert nif_joblist to jobpool
-    jobpool = list()
-    for line in nif_joblist:
-        jobpool.append(line)
-    # run jobpool
-#    if jobpool_processNif(jobpool) == -1:
-#        print "ERROR: jobpool processNif() interrupted."
-    print "DEBUG: CPU_COUNT = " + str(CPU_COUNT)
-    print "DEBUG: jobpool size = " + str(len(jobpool))
-    pool = multiprocessing.Pool(processes=CPU_COUNT)
-    result = pool.map_async(perform_job_processNif, jobpool)
-#    result = pool.map_async(perform_job_test, jobpool)
-    try:
-        result.wait(timeout=99999999)
-        pool.close()
-        pool.join()
-    except KeyboardInterrupt:
-        print "ERROR: jobpool processNif() interrupted."
-
-
-##    #======= Single-threaded processNif() ========
-##    for filename in nif_joblist:
-###        print "processing: " + input_datadir + filename + " ... using ref_scale=" + str(nif_joblist[filename])
-##        if os.path.exists(input_datadir + filename):
-## #           print " file found, calling processNif()..."
-##            do_output = FarNifAutoGen_processNif.processNif(filename, radius_threshold_arg=model_radius_threshold, ref_scale=nif_joblist[filename], input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)
-##            #... call blender polyreducer
-##            if do_output is True:
-###                print " DEBUG: spawn Blender polyreducer"
-##                launchBlender(FarNifAutoGen_processNif.output_filename_path, reduction_scale_arg=nif_reduction_scale)
-###                raw_input("Press ENTER to continue.")
-##            else:
-###                print "processNIF failed."
-##                debug_print("processNif(" + filename + "): skipping polyreduce().")
-##        else:
-##            debug_print("processNif(" + filename + ") ERROR: file not found.")
+    if multiprocessing_on:
+        #===== Multi-threaded processNif() =======
+        lookup_stream = open(temp_lookup_file, "w")
+        for key, value in nif_joblist.items():
+            lookup_stream.write('%s:%s\n' % (key, value))
+        lookup_stream.close()
+        # convert nif_joblist to jobpool
+        jobpool = list()
+        for line in nif_joblist:
+            jobpool.append(line)
+        # run jobpool
+    #    if jobpool_processNif(jobpool) == -1:
+    #        print "ERROR: jobpool processNif() interrupted."
+        print "DEBUG: CPU_COUNT = " + str(CPU_COUNT)
+        print "DEBUG: jobpool size = " + str(len(jobpool))
+        pool = multiprocessing.Pool(processes=CPU_COUNT)
+        result = pool.map_async(perform_job_processNif, jobpool)
+    #    result = pool.map_async(perform_job_test, jobpool)
+        try:
+            result.wait(timeout=99999999)
+            pool.close()
+            pool.join()
+        except KeyboardInterrupt:
+            print "ERROR: jobpool processNif() interrupted."
+    else:
+        #======= Single-threaded processNif() ========
+        for filename in nif_joblist:
+    #        print "processing: " + input_datadir + filename + " ... using ref_scale=" + str(nif_joblist[filename])
+            if os.path.exists(input_datadir + filename):
+    #           print " file found, calling processNif()..."
+                do_output = FarNifAutoGen_processNif.processNif(filename, radius_threshold_arg=model_radius_threshold, ref_scale=nif_joblist[filename], input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)
+                #... call blender polyreducer
+                if do_output is True:
+    #                print " DEBUG: spawn Blender polyreducer"
+                    launchBlender(FarNifAutoGen_processNif.output_filename_path, reduction_scale_arg=nif_reduction_scale)
+    #                raw_input("Press ENTER to continue.")
+                else:
+    #                print "processNIF failed."
+                    debug_print("processNif(" + filename + "): skipping polyreduce().")
+            else:
+                debug_print("processNif(" + filename + ") ERROR: file not found.")
 
 
     # read ddslist.job (lowres_list.job)
@@ -342,7 +361,9 @@ def main():
         print "dds joblist found."
         ddsjob_stream = open(output_root + dds_list_jobfile, "r")
         for line in ddsjob_stream:
-            dds_filename = line.rstrip("\r\n")
+            dds_filename = line.lower().rstrip("\r\n")
+            dds_filename = str(os.path.normpath(dds_filename))
+            dds_filename = dds_filename.replace("\\","/")
             if dds_filename not in dds_joblist:
                 dds_joblist.append(dds_filename)
         ddsjob_stream.close()
@@ -351,7 +372,11 @@ def main():
         # copy source DDS files to output folder
         for line in dds_joblist:
             output_filename, tags = line.split(",", 1)
+            output_filename = output_filename.replace("\\","/")
             input_filename = output_filename.replace("lowres/", "")
+            if input_filename in blacklist:
+#                raw_input("BLACKLIST TRIGGERED (DDS), press ENTER to continue.")
+                continue
 #            print "process dds file: " + input_datadir + input_filename
             if os.path.exists(input_datadir + input_filename):
 #                print "  file found."
