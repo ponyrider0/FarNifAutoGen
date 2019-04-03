@@ -59,9 +59,14 @@ def process_NiSourceTexture(block, root0, dds_list):
     dds_has_alpha = False
     root_chain = root0.find_chain(block)
     for node in root_chain:
-        if isinstance(node, NifFormat.NiAlphaProperty):
-            dds_has_alpha = True
-            break
+        if isinstance(node, NifFormat.NiAVObject):
+            for prop in node.get_properties():
+                if isinstance(prop, NifFormat.NiAlphaProperty):
+                    dds_has_alpha = True
+                    break
+        if dds_has_alpha == True:
+            break;
+
     # get texture filename
     texture_name = block.file_name
     # prefix "/lowres/"
@@ -81,8 +86,7 @@ def process_NiSourceTexture(block, root0, dds_list):
     #   if texture_name1.endswith(".dds"):
     #       texture_name1 = texture_name1[:-len(".dds")] + "_lowres.dds"
     if (block.use_external is 1):
-        if not dds_list.get(texture_name1) == None:
-            dds_list[texture_name1] = bool(dds_has_alpha)
+        dds_list[texture_name1] = dds_has_alpha
         block.file_name = texture_name1
     else:
         print "skipping, internal texture found: " + texture_name
@@ -210,7 +214,7 @@ def output_ddslist(dds_list, output_root):
     #rename and copy textures to output stem...
     lowres_list_filename = "lowres_list.job"
     ostream = open(output_root + lowres_list_filename, "a")
-    for filename, has_alpha in dds_list:
+    for filename, has_alpha in dds_list.items():
         if has_alpha is True:
             alpha_tag = "alpha=1"
         else:
@@ -251,6 +255,12 @@ def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0),
         for block in root.tree():
             index_counter = index_counter + 1
             block_count = index_counter
+            if isinstance(block, NifFormat.NiBillboardNode):
+                # do not autogen, unsupported NIF
+                return -1
+##            if isinstance(block, NifFormat.NiUVController):
+##                # do not autogen, unsupported NIF
+##                return -1
             if isinstance(block, NifFormat.NiAlphaProperty):
                 model_has_alpha_prop = True
             if isinstance(block, NifFormat.NiSourceTexture):
