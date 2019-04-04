@@ -7,6 +7,7 @@ from pyffi.utils.mathutils import matvecMul
 import pyffi.spells.nif.modify
 import pyffi.spells.nif.fix
 import pyffi.spells.nif.optimize
+import pyffi.spells.nif
 
 # global variables
 ##model_minx = None
@@ -19,6 +20,11 @@ import pyffi.spells.nif.optimize
 ##block_count = None
 ##root0 = None
 ##output_filename_path = None
+
+class SpellDelTextures(pyffi.spells.nif.modify._SpellDelBranchClasses):
+    SPELLNAME = "modify_deltextures"
+    BRANCH_CLASSES_TO_BE_DELETED = (NifFormat.NiSourceTexture,
+                                    NifFormat.NiTexturingProperty,)
 
 def init_logger():
 #    print "init_logger() entered"
@@ -176,14 +182,19 @@ def cull_nifdata(x):
     pyffi.spells.nif.modify.SpellDelBSXFlags(data=x).recurse()
     pyffi.spells.nif.modify.SpellDelStringExtraDatas(data=x).recurse()
     pyffi.spells.nif.fix.SpellDelTangentSpace(data=x).recurse()
-    pyffi.spells.nif.modify.SpellDelAnimation(data=x).recurse()
+#    pyffi.spells.nif.modify.SpellDelAnimation(data=x).recurse()
     pyffi.spells.nif.modify.SpellDelCollisionData(data=x).recurse()
     pyffi.spells.nif.modify.SpellDisableParallax(data=x).recurse()
     return x
 
 def optimize_nifdata(x):
 #    print "optimize_nifdata() entered"
-    pyffi.spells.nif.optimize.SpellOptimizeGeometry(data=x).recurse()
+#    pyffi.spells.nif.optimize.SpellOptimizeGeometry(data=x).recurse()
+    toaster = pyffi.spells.nif.NifToaster()
+    toaster.options["arg"] = -0.1
+    spell = pyffi.spells.nif.optimize.SpellReduceGeometry(data=x, toaster=toaster)
+#    spell.VERTEXPRECISION = -0.1
+    spell.recurse()
 #    print "leaving optimize_nifdata()"
     return x
     
@@ -244,6 +255,8 @@ def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0),
     pyffilogger, loghandler = init_logger()
     output_root = init_paths(output_datadir_arg)
 
+    UVController_workaround = False
+
 #    print "load_nif(input_filename)"
     nifdata = load_nif(input_datadir_arg + input_filename)
     nifdata = cull_nifdata(nifdata)
@@ -258,9 +271,9 @@ def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0),
             if isinstance(block, NifFormat.NiBillboardNode):
                 # do not autogen, unsupported NIF
                 return -1
-##            if isinstance(block, NifFormat.NiUVController):
-##                # do not autogen, unsupported NIF
-##                return -1
+            if isinstance(block, NifFormat.NiUVController):
+                # do not autogen, unsupported NIF
+                UVController_workaround = True
             if isinstance(block, NifFormat.NiAlphaProperty):
                 model_has_alpha_prop = True
             if isinstance(block, NifFormat.NiSourceTexture):
@@ -299,6 +312,13 @@ def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0),
 #    print "DEBUG: model_radius = " + str(model_radius)
 #    print "DEBUG: ref_scale = " + str(ref_scale)
 #    print "DEBUG: radius_threshold_arg = " + str(radius_threshold_arg)
+
+#    nifdata = cull_nifdata(nifdata)
+    if UVController_workaround is True:
+        SpellDelTextures(data=nifdata).recurse()
+
+    pyffi.spells.nif.modify.SpellDelAnimation(data=nifdata).recurse()
+    pyffi.spells.nif.optimize.SpellCleanRefLists(data=nifdata).recurse()
     
     # if radius too small, skip
 #    print "DEBUG: radius=" + str(model_radius) + ", ref_scale=" + str(ref_scale)
