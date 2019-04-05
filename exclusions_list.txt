@@ -1,10 +1,1 @@
 meshes/morro\x\exuvivecupuwateru01.nif
-meshes\morro\f\floraubcutreeu01.nif
-meshes\morro\f\floraubcutreeu02.nif
-meshes\morro\f\floraubcutreeu05.nif
-meshes\morro\f\floraubcutreeu07.nif
-meshes\morro\x\exuggufenceu01.nif
-meshes\morro\x\exuggufenceu02.nif
-meshes\morro\x\exuggufenceu03.nif
-meshes\morro\x\exuggufenceu04.nif
-meshes\morro\x\exuggufenceu01nohavok.nif
