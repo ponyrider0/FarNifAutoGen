@@ -59,20 +59,21 @@ def load_nif(input_filename):
     fstream.close()
     return x
 
-def process_NiSourceTexture(block, root0, dds_list):
-#    print "process_NiSourceTexture() entered"
-    # look for associated alpha property in block chain
-    dds_has_alpha = False
-    root_chain = root0.find_chain(block)
-    for node in root_chain:
-        if isinstance(node, NifFormat.NiAVObject):
-            for prop in node.get_properties():
-                if isinstance(prop, NifFormat.NiAlphaProperty):
-                    dds_has_alpha = True
-                    break
-        if dds_has_alpha == True:
-            break;
-
+##def process_NiSourceTexture(block, root0, dds_list):
+###    print "process_NiSourceTexture() entered"
+##    # look for associated alpha property in block chain
+##    dds_has_alpha = False
+##    root_chain = root0.find_chain(block)
+##    for node in root_chain:
+##        if isinstance(node, NifFormat.NiAVObject):
+##            for prop in node.get_properties():
+##                if isinstance(prop, NifFormat.NiAlphaProperty):
+##                    dds_has_alpha = True
+##                    break
+##        if dds_has_alpha == True:
+##            break;
+def process_NiSourceTexture(block, dds_list, has_alpha=False):
+    dds_has_alpha = has_alpha
     # get texture filename
     texture_name = block.file_name
     # prefix "/lowres/"
@@ -257,6 +258,11 @@ def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0),
 
     UVController_workaround = False
 
+    # global AlphaProperty sharable by all blocks in model
+    alphablock = NifFormat.NiAlphaProperty()
+    alphablock.flags = 4844
+    alphablock.threshold = 0
+
 #    print "load_nif(input_filename)"
     nifdata = load_nif(input_datadir_arg + input_filename)
     nifdata = cull_nifdata(nifdata)
@@ -274,37 +280,84 @@ def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0),
             if isinstance(block, NifFormat.NiUVController):
                 # do not autogen, unsupported NIF
                 UVController_workaround = True
-            if isinstance(block, NifFormat.NiAlphaProperty):
-                model_has_alpha_prop = True
-            if isinstance(block, NifFormat.NiSourceTexture):
-#                print "process_NiSourceTexture(block)"
-                dds_list = process_NiSourceTexture(block, root0, dds_list)
-            if isinstance(block, NifFormat.NiTriShapeData) or isinstance(block,NifFormat.NiTriStripsData):
-#                print "process_NiTriShapeData(block)"
-                model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz = process_NiTriShapeData(block, root0, model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)
+##            if isinstance(block, NifFormat.NiAlphaProperty):
+##                model_has_alpha_prop = True
+##            if isinstance(block, NifFormat.NiSourceTexture):
+###                print "process_NiSourceTexture(block)"
+##                dds_list = process_NiSourceTexture(block, root0, dds_list)
+            if isinstance(block, NifFormat.NiTriShape) or isinstance(block, NifFormat.NiTriStrips):
+                block_has_alpha_prop = False
+                sourcetextures_list = list()
+                # 1. check for alpha property first
+                for prop in block.get_properties():
+                    if isinstance(prop, NifFormat.NiAlphaProperty):
+                        block_has_alpha_prop = True
+                    if isinstance(prop, NifFormat.NiTexturingProperty):
+                        if prop.has_base_texture:
+                            if prop.base_texture is not None:
+                                sourcetextures_list.append(prop.base_texture.source)
+                        if prop.has_bump_map_texture:
+                            if prop.bump_map_texture is not None:
+                                sourcetextures_list.append(prop.bump_map_texture.source)
+                        if prop.has_dark_texture:
+                            if prop.dark_texture is not None:
+                                sourcetextures_list.append(prop.dark_texture.source)
+                        if prop.has_decal_0_texture:
+                            if prop.decal_0_texture is not None:
+                                sourcetextures_list.append(prop.decal_0_texture.source)
+                        if prop.has_decal_1_texture:
+                            if prop.decal_1_texture is not None:
+                                sourcetextures_list.append(prop.decal_1_texture.source)
+                        if prop.has_decal_2_texture:
+                            if prop.decal_2_texture is not None:
+                                sourcetextures_list.append(prop.decal_2_texture.source)
+                        if prop.has_decal_3_texture:
+                            if prop.decal_3_texture is not None:
+                                sourcetextures_list.append(prop.decal_3_texture.source)
+                        if prop.has_detail_texture:
+                            if prop.detail_texture is not None:
+                                sourcetextures_list.append(prop.detail_texture.source)
+                        if prop.has_gloss_texture:
+                            if prop.gloss_texture is not None:
+                                sourcetextures_list.append(prop.gloss_texture.source)
+                        if prop.has_glow_texture:
+                            if prop.glow_texture is not None:
+                                sourcetextures_list.append(prop.glow_texture.source)
+                        if prop.has_normal_texture:
+                            if prop.normal_texture is not None:
+                                sourcetextures_list.append(prop.normal_texture.source)                                
+                # 2. then process any texture properties
+                for sourcetexture in sourcetextures_list:
+                    dds_list = process_NiSourceTexture(sourcetexture, dds_list, block_has_alpha_prop)
+                # 3. now add alpha property if not preset
+                if block_has_alpha_prop is False:
+                    block.add_property(alphablock)
+                # check for VertexData, calculate model_min/max if present
+                if block.data is not None:
+                    model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz = process_NiTriShapeData(block.data, root0, model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)
     if (model_minx is not None):
 #        print "calling calc_model_minmax()"
         model_radius = calc_model_minmax(model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)
 
-    if model_has_alpha_prop is False:
-        # add alpha property
-        # mark DDS for removal of alpha channel
-        # first, try to insert at roots if they are NiAVObjects
-        alpha_prop_added = False
-        alphablock = NifFormat.NiAlphaProperty()
-        alphablock.flags = 4844
-        alphablock.threshold = 0
-        for root in nifdata.roots:
-            if isinstance(root, NifFormat.NiAVObject):
-                root.add_property(alphablock)
-                alpha_prop_added = True
-        if alpha_prop_added is False:
-            for root in nifdata.roots:
-                for block in root.tree():
-                    if isinstance(block, NifFormat.NiAVObject):
-                        block.add_property(alphablock)
-                        alpha_prop_added = True
-                        break        
+##    if model_has_alpha_prop is False:
+##        # add alpha property
+##        # mark DDS for removal of alpha channel
+##        # first, try to insert at roots if they are NiAVObjects
+##        alpha_prop_added = False
+##        alphablock = NifFormat.NiAlphaProperty()
+##        alphablock.flags = 4844
+##        alphablock.threshold = 0
+##        for root in nifdata.roots:
+##            if isinstance(root, NifFormat.NiAVObject):
+##                root.add_property(alphablock)
+##                alpha_prop_added = True
+##        if alpha_prop_added is False:
+##            for root in nifdata.roots:
+##                for block in root.tree():
+##                    if isinstance(block, NifFormat.NiAVObject):
+##                        block.add_property(alphablock)
+##                        alpha_prop_added = True
+##                        break        
 
     ref_scale = float(ref_scale)
     radius_threshold_arg = float(radius_threshold_arg)
