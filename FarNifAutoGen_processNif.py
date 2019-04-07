@@ -9,17 +9,6 @@ import pyffi.spells.nif.fix
 import pyffi.spells.nif.optimize
 import pyffi.spells.nif
 
-# global variables
-##model_minx = None
-##model_miny = None
-##model_minz = None
-##model_maxx = None
-##model_maxy = None
-##model_maxz = None
-##model_radius = None
-##block_count = None
-##root0 = None
-##output_filename_path = None
 
 class SpellDelTextures(pyffi.spells.nif.modify._SpellDelBranchClasses):
     SPELLNAME = "modify_deltextures"
@@ -59,19 +48,7 @@ def load_nif(input_filename):
     fstream.close()
     return x
 
-##def process_NiSourceTexture(block, root0, dds_list):
-###    print "process_NiSourceTexture() entered"
-##    # look for associated alpha property in block chain
-##    dds_has_alpha = False
-##    root_chain = root0.find_chain(block)
-##    for node in root_chain:
-##        if isinstance(node, NifFormat.NiAVObject):
-##            for prop in node.get_properties():
-##                if isinstance(prop, NifFormat.NiAlphaProperty):
-##                    dds_has_alpha = True
-##                    break
-##        if dds_has_alpha == True:
-##            break;
+
 def process_NiSourceTexture(block, dds_list, has_alpha=False):
     dds_has_alpha = has_alpha
     # get texture filename
@@ -112,15 +89,16 @@ def process_NiTriShapeData(block, root0, model_minx, model_miny, model_minz, mod
 #        else:
 #            print "no NiNodes found in root chain."
     #print "block chain: " + str(root_chain)
-    if (refnode is None):
-        print "process_NiTriShapeData(): ERROR! could not assign reference node in root chain"
-        return model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz
-    parent_node = root_chain[len(root_chain)-2]
-    if isinstance(parent_node, NifFormat.NiAVObject):
-        root_transform = root_chain[len(root_chain)-2].get_transform(refnode)
+    if refnode is None:
+        print "process_NiTriShapeData(): WARNING: could not assign reference node in root chain"
+#        return model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz
     else:
-#        print "process_NiTriShapeData(): parent node does not have transform data, skipping block..."
-        return model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz
+        parent_node = root_chain[len(root_chain)-2]
+        if isinstance(parent_node, NifFormat.NiAVObject):
+            root_transform = root_chain[len(root_chain)-2].get_transform(refnode)
+        else:
+            print "process_NiTriShapeData(): parent node does not have transform data, skipping block..."
+            return model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz
 
     #print root_transform
     block_maxx = block_minx = block.vertices[0].x
@@ -136,8 +114,9 @@ def process_NiTriShapeData(block, root0, model_minx, model_miny, model_minz, mod
     # transform coordinates to global model space
     minvec = [block_minx, block_miny, block_minz, 1]
     maxvec = [block_maxx, block_maxy, block_maxz, 1]
-    minvec = matvecMul(root_transform.as_list(), minvec)
-    maxvec = matvecMul(root_transform.as_list(), maxvec)
+    if refnode is not None:
+        minvec = matvecMul(root_transform.as_list(), minvec)
+        maxvec = matvecMul(root_transform.as_list(), maxvec)
     block_minx = minvec[0]
     block_miny = minvec[1]
     block_minz = minvec[2]
@@ -279,12 +258,11 @@ def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0),
                 return -1
             if isinstance(block, NifFormat.NiUVController):
                 # do not autogen, unsupported NIF
+                print "processNIF(): WARNING: unsupported block type: NiUVController; removing texture as workaround...."
                 UVController_workaround = True
-##            if isinstance(block, NifFormat.NiAlphaProperty):
-##                model_has_alpha_prop = True
-##            if isinstance(block, NifFormat.NiSourceTexture):
-###                print "process_NiSourceTexture(block)"
-##                dds_list = process_NiSourceTexture(block, root0, dds_list)
+            if isinstance(block, NifFormat.NiTextureTransformController):
+                print "processNIF(): WARNING: unsupported block type: NiTextureTransformController; removing texture as workaround...."
+                UVController_workaround = True
             if isinstance(block, NifFormat.NiTriShape) or isinstance(block, NifFormat.NiTriStrips):
                 block_has_alpha_prop = False
                 sourcetextures_list = list()
@@ -337,34 +315,10 @@ def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0),
                     model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz = process_NiTriShapeData(block.data, root0, model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)
     if (model_minx is not None):
 #        print "calling calc_model_minmax()"
-        model_radius = calc_model_minmax(model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)
-
-##    if model_has_alpha_prop is False:
-##        # add alpha property
-##        # mark DDS for removal of alpha channel
-##        # first, try to insert at roots if they are NiAVObjects
-##        alpha_prop_added = False
-##        alphablock = NifFormat.NiAlphaProperty()
-##        alphablock.flags = 4844
-##        alphablock.threshold = 0
-##        for root in nifdata.roots:
-##            if isinstance(root, NifFormat.NiAVObject):
-##                root.add_property(alphablock)
-##                alpha_prop_added = True
-##        if alpha_prop_added is False:
-##            for root in nifdata.roots:
-##                for block in root.tree():
-##                    if isinstance(block, NifFormat.NiAVObject):
-##                        block.add_property(alphablock)
-##                        alpha_prop_added = True
-##                        break        
+        model_radius = calc_model_minmax(model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)      
 
     ref_scale = float(ref_scale)
     radius_threshold_arg = float(radius_threshold_arg)
-        
-#    print "DEBUG: model_radius = " + str(model_radius)
-#    print "DEBUG: ref_scale = " + str(ref_scale)
-#    print "DEBUG: radius_threshold_arg = " + str(radius_threshold_arg)
 
 #    nifdata = cull_nifdata(nifdata)
     if UVController_workaround is True:
