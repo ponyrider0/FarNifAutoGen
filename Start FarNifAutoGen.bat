@@ -31,8 +31,8 @@ REM which contains the the meshes and textures which you would like
 REM to have generated into _Far.NIF files and lowres textures. 
 REM
 REM =============================================================
-set "FARNIFAUTOGEN_INPUT_DATADIR=C:\SteamLibrary\steamapps\common\Oblivion\Data\"
-REM set "FARNIFAUTOGEN_INPUT_DATADIR=C:\Games\bsacmd\out\"
+REM set "FARNIFAUTOGEN_INPUT_DATADIR=C:\SteamLibrary\steamapps\common\Oblivion\Data\"
+set "FARNIFAUTOGEN_INPUT_DATADIR=C:\Games\bsacmd\out\"
 
 
 REM =============================================================
@@ -50,9 +50,10 @@ REM a list of NIF files which will be read for potential
 REM generation into _Far.NIF files.
 REM
 REM =============================================================
-set "NIF_JOBLIST_FILE=nif_list_morroblivion.job"
-REM set "NIF_JOBLIST_FILE=nif_list_vivec.job"
-
+REM set "NIF_JOBLIST_FILE=nif_list_morroblivion.job"
+set "NIF_JOBLIST_FILE=nif_list_test_vivec_only.job"
+REM set "NIF_JOBLIST_FILE=nif_list_morroblivion_bsa_replacer.job"
+REM set "NIF_JOBLIST_FILE=nif_list_oblivion.job"
 
 set "NIF_REDUCTION_SCALE=1.000"
 set "DDS_REDUCTION_SCALE=0.250"

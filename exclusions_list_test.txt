@@ -1,2 +1,0 @@
-meshes/morro\x\exuvivecupuwateru01.nif
-textures/morro/x/txuvubridgedetailu04.dds
