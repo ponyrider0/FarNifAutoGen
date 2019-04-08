@@ -1,6 +1,13 @@
 import os.path
+import sys
 
-nif_list_jobfile = "nif_list.job"
+if len(sys.argv) == 1:
+    raw_input("Please run script with jobfile to process.")
+    exit()
+    
+nif_list_jobfile = sys.argv[1]
+
+#nif_list_jobfile = "nif_list.job"
 nif_joblist = dict()
 
 if not os.path.exists(nif_list_jobfile):
@@ -20,7 +27,7 @@ for line in nifjob_stream:
             nif_joblist[nif_filename] = float(ref_scale)
 nifjob_stream.close()
 
-nif_list_jobfile = nif_list_jobfile.replace(".job","-B.job")
+nif_list_jobfile = nif_list_jobfile.replace(".job","-fixed.job")
 
 nifjob_stream = open(nif_list_jobfile, "w")
 for nif_filename in nif_joblist:
