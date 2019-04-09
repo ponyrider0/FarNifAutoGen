@@ -151,9 +151,13 @@ data_source_list_filename = "data_source_list.txt"
 data_source_tempfilename = "lookup_datasources.tmp"
 def Initialize_Data_Source_List():
     data_source_list = list()
+    data_source_dict = dict()
     cleaned_datadir = os.path.normpath(input_datadir).replace("\\","/").lower() + "/"
     if os.path.exists(cleaned_datadir):
+        tags = "+nif+dds"
+        print "Adding datasource: " + cleaned_datadir + "," + tags
         data_source_list.append(cleaned_datadir)
+        data_source_dict[cleaned_datadir] = tags
     # read in data_sources file to priority_list
     if os.path.exists(data_source_list_filename):
         priority_stream = open(data_source_list_filename, "r")
@@ -162,11 +166,28 @@ def Initialize_Data_Source_List():
             line = os.path.normpath(line).replace("\\","/")
             if "/" not in line:
                 line = cleaned_datadir + line
-            if os.path.isdir(line):
-                if line[len(line)-1] is not "/":
-                    line = line + "/"
             if os.path.exists(line) and line not in data_source_list:
-                data_source_list.append(line)
+                if os.path.isdir(line):
+                    if line[len(line)-1] is not "/":
+                        line = line + "/"
+                    tags = "+nif+dds"
+                    print "Adding datasource: " + line + "," + tags
+                    data_source_list.append(line)
+                    data_source_dict[line] = tags
+                elif os.path.isfile(line):
+                    # inspect bsa for nif and dds
+                    bsa_stream = open(line, "rb")
+                    bsa_data = BsaFormat.Data()
+                    bsa_data.inspect(bsa_stream)
+                    tags = ""
+                    if bsa_data.file_flags.has_nif:
+                        tags = "+nif"
+                    if bsa_data.file_flags.has_dds:
+                        tags = tags + "+dds"
+                    if tags is not "":
+                        print "Adding datasource: " + line + "," + tags
+                        data_source_list.append(line)
+                        data_source_dict[line] = tags
         priority_stream.close()
     if user_option_dont_autoread_bsa is True:
         skip_autoread = True
@@ -174,20 +195,31 @@ def Initialize_Data_Source_List():
         for BSAfile in glob.glob(cleaned_datadir + "*.bsa"):
             line = os.path.normpath(BSAfile).lower().replace("\\","/")
             if line not in data_source_list:
-                data_source_list.append(line)
+                # inspect bsa for nif and dds
+                bsa_stream = open(line, "rb")
+                bsa_data = BsaFormat.Data()
+                bsa_data.inspect(bsa_stream)
+                tags = ""
+                if bsa_data.file_flags.has_nif:
+                    tags = "+nif"
+                if bsa_data.file_flags.has_dds:
+                    tags = tags + "+dds"
+                if tags is not "":
+                    print "Adding datasource: " + line + "," + tags
+                    data_source_list.append(line)
+                    data_source_dict[line] = tags
     # write data_source temp file
     data_source_tempstream = open(data_source_tempfilename,"w")
-    for entry in data_source_list:
-        data_source_tempstream.write(entry + "\n")
-    data_source_tempstream.close()    
+    for key in data_source_list:
+        data_source_tempstream.write(key + "," + data_source_dict[key] + "\n")
+    data_source_tempstream.close()
 
 def GetInputFileStream(filename):
-    data_source_list = list()
     # load lookup_datasource tempfile
     data_source_tempstream = open(data_source_tempfilename,"r")
     for raw_line in data_source_tempstream:
-        line = raw_line.rstrip("\r\n")
-        print "datasource: " + line
+        line, tags = raw_line.rstrip("\r\n").split(",",1)
+#        print "datasource: " + line
         if os.path.isdir(line):
             # search for filename directly from path
             if os.path.exists(line + filename):
@@ -208,13 +240,13 @@ def GetInputFileStream(filename):
             bsa_stream = open(line, "rb")
             bsa_data = BsaFormat.Data()
             bsa_data.inspect(bsa_stream)
-            if ".nif" in filename.lower():
-                if bsa_data.file_flags.has_nif is False:
+            if ".nif" in filename.lower() and "nif" not in tags:
+#                if bsa_data.file_flags.has_nif is False:
                     continue
-            elif ".dds" in filename.lower():
-                if bsa_data.file_flags.has_dds is False:
+            elif ".dds" in filename.lower() and "dds" not in tags:
+#                if bsa_data.file_flags.has_dds is False:
                     continue
-            file_is_compressed = bsa_data.archive_flags.is_compressed
+            bsa_is_compressed = bsa_data.archive_flags.is_compressed
             bsa_data.read(bsa_stream)
             for folder_block in bsa_data.folders:
                 for file_block in folder_block.files:
@@ -225,8 +257,12 @@ def GetInputFileStream(filename):
                         file_offset = file_block.offset
                         file_size = file_block.file_size.num_bytes
                         bsa_stream.seek(file_offset)
-                        file_originalsize = bsa_stream.read(4)
-                        if file_is_compressed:
+                        if file_block.file_size.is_compressed_override:
+                            fileblock_is_compressed = not bsa_is_compressed
+                        else:
+                            fileblock_is_compressed = bsa_is_compressed
+                        if fileblock_is_compressed:
+                            file_originalsize = bsa_stream.read(4)
                             z_data = bsa_stream.read(file_size)
                             file_data = zlib.decompress(z_data)
                         else:
@@ -353,6 +389,26 @@ def perform_job_processNif(filename):
     print "perform_job_processNif() complete. <============== "
 
 
+def perform_job_prepareDDS(filename):
+    line = filename
+    output_filename, tags = line.split(",", 1)
+    input_filename = output_filename.replace("lowres/", "")
+    tempfile_stream = GetInputFileStream(input_filename)
+    if tempfile_stream is not None:
+        folderPath = os.path.dirname(output_datadir + output_filename)
+        if os.path.exists(folderPath) == False:
+            os.makedirs(folderPath)
+        output_stream = open(output_datadir + output_filename, "wb")
+        data = tempfile_stream.read()
+        output_stream.write(data)
+        output_stream.close()
+        tempfile_stream.close()
+    else:
+#        print "perform_job_prepareDDS(" + input_filename + "): ERROR: file not found, skipping"
+        debug_print("perform_job_prepareDDS(" + input_filename + ") ERROR: file not found.")
+    print "perform_job_prepareDDS(" + input_filename + ") complete."
+
+
 def perform_job_test(filename):
     global input_datadir
     global nif_joblist
@@ -477,48 +533,51 @@ def main():
             dds_filename = str(os.path.normpath(dds_filename))
             dds_filename = dds_filename.replace("\\","/")
             if dds_filename not in dds_joblist:
+                output_filename, tags = dds_filename.split(",", 1)
+                input_filename = output_filename.replace("lowres/", "")
+                if input_filename in exclusions_list:
+                    raw_input("EXCLUSIONS LIST TRIGGERED (DDS), press ENTER to continue.")
+                    continue
                 dds_joblist.append(dds_filename)
         ddsjob_stream.close()
-        # for each dds, process dds
-#        print "\n2b. For each dds, process the dds file"
-        # copy source DDS files to output folder
-        for line in dds_joblist:
-            output_filename, tags = line.split(",", 1)
-            output_filename = output_filename.replace("\\","/")
-            input_filename = output_filename.replace("lowres/", "")
-            if input_filename in exclusions_list:
-#                raw_input("EXCLUSIONS LIST TRIGGERED (DDS), press ENTER to continue.")
-                continue
-#            print "process dds file: " + input_datadir + input_filename
 
-##            if os.path.exists(input_datadir + input_filename):
-###                print "  file found."
-##                folderPath = os.path.dirname(output_datadir + output_filename)
-##                if os.path.exists(folderPath) == False:
-##                    os.makedirs(folderPath)
-##                try:
-##                    shutil.copy(input_datadir + input_filename, output_datadir + output_filename)
-##                except IOError:
-##                    debug_print("processDDS_joblist(" + input_filename + ") ERROR: copy file to output_datadir failed. Skipping to next file...")
-##                # call gimp resizer...
-###                launchGIMP(output_datadir + output_filename)
-            tempfile_stream = GetInputFileStream(input_filename)
-            if tempfile_stream is not None:
-                folderPath = os.path.dirname(output_datadir + output_filename)
-                if os.path.exists(folderPath) == False:
-                    os.makedirs(folderPath)
-                output_stream = open(output_datadir + output_filename, "wb")
-                data = tempfile_stream.read()
-                output_stream.write(data)
-                output_stream.close()
-                tempfile_stream.close()
-            else:
-#                print "  file not found, skipping"
-                debug_print("processDDS_joblist(" + input_filename + ") ERROR: file not found.")
-                continue
-        # launch GIMP with joblist
-        # generate temp joblist
-        # TODO: split temp joblist into small pieces for multithreading
+        # copy source DDS files to output folder
+        if not multiprocessing_on:
+            # single-process
+            for line in dds_joblist:
+                output_filename, tags = line.split(",", 1)
+                input_filename = output_filename.replace("lowres/", "")
+    #            print "process dds file: " + input_datadir + input_filename
+                tempfile_stream = GetInputFileStream(input_filename)
+                if tempfile_stream is not None:
+                    folderPath = os.path.dirname(output_datadir + output_filename)
+                    if os.path.exists(folderPath) == False:
+                        os.makedirs(folderPath)
+                    output_stream = open(output_datadir + output_filename, "wb")
+                    data = tempfile_stream.read()
+                    output_stream.write(data)
+                    output_stream.close()
+                    tempfile_stream.close()
+                    print "prepareDDS(" + input_filename + "): file copied and preped."
+                else:
+    #                print "  file not found, skipping"
+                    debug_print("processDDS_joblist(" + input_filename + ") ERROR: file not found.")
+                    continue
+        else:
+            # multi-threaded
+            # use dds_joblist as jobpool
+            dds_jobpool = list()
+            for line in dds_joblist:
+                dds_jobpool.append(line)
+            dds_pool = multiprocessing.Pool(processes=CPU_COUNT)
+            dds_result = dds_pool.map_async(perform_job_prepareDDS, dds_jobpool)
+            try:
+                dds_result.wait(timeout=99999999)
+                dds_pool.close()
+                dds_pool.join()
+            except KeyboardInterrupt:
+                print "ERROR: jobpool processNif() interrupted."
+
         temp_jobfile = dds_list_jobfile.replace(".job","-temp.job")
         ddsjob_stream = open(output_root + temp_jobfile, "w")
         for line in dds_joblist:
@@ -526,7 +585,7 @@ def main():
         ddsjob_stream.close()
 #        raw_input("Launching GIMP_jobpool....")
         normalized_filepath = str(os.path.normpath(output_root + temp_jobfile)).replace("\\","/")
-        print "DEBUG: normalized_filepath=" + normalized_filepath
+#        print "DEBUG: normalized_filepath=" + normalized_filepath
         launchGIMP_jobpool(normalized_filepath,reduction_scale_arg=dds_reduction_scale)
     # complete
     print "\nFarNifAutoGen complete.\n"
