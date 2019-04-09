@@ -48,6 +48,10 @@ def load_nif(input_filename):
     fstream.close()
     return x
 
+def load_nifstream(stream):
+    x = NifFormat.Data()
+    x.read(stream)
+    return x
 
 def process_NiSourceTexture(block, dds_list, has_alpha=False):
     dds_has_alpha = has_alpha
@@ -215,6 +219,12 @@ def output_ddslist(dds_list, output_root):
 #    print "leaving output_ddslist()"
 
 def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0), input_datadir_arg=None, output_datadir_arg=None):
+    input_stream = open(input_filename, "rb")
+    returnval = processNifStream(input_stream, input_filename, radius_threshold_arg, ref_scale, input_datadir_arg, output_datadir_arg)
+    input_stream.close()
+    return returnval
+
+def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0), input_datadir_arg=None, output_datadir_arg=None):
 #    print "\n\nprocessNif() entered"
     # intialize globals
     model_has_alpha_prop = False
@@ -243,7 +253,8 @@ def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0),
     alphablock.threshold = 0
 
 #    print "load_nif(input_filename)"
-    nifdata = load_nif(input_datadir_arg + input_filename)
+#    nifdata = load_nif(input_datadir_arg + input_filename)
+    nifdata = load_nifstream(input_stream)
     nifdata = cull_nifdata(nifdata)
     index_counter = -1
     root0 = nifdata.roots[0]

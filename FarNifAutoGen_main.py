@@ -5,6 +5,7 @@ import subprocess
 import time
 import glob
 import shutil
+import tempfile
 
 from os import listdir, makedirs
 from os.path import isfile, join
@@ -13,10 +14,13 @@ import FarNifAutoGen_processNif
 #from FarNifAutoGen_processNif import processNif
 #from FarNifAutoGen_processNif import output_filename_path
 
+from pyffi.formats.bsa import BsaFormat
+import zlib
+
 # custom settings
 #os.environ["BLENDEREXE"] = "C:/Blender/blender.exe"
 #os.environ["FARNIFAUTOGEN_INPUT_DATADIR"] = "C:/Games/bsacmd/out/"
-#os.environ["NIF_JOBLIST_FILE"] = "nif_list_vivec.job"
+#os.environ["NIF_JOBLIST_FILE"] = "nif_list_test_vivec_only.job"
 #os.environ["DDS_JOBLIST_FILE"] = "lowres_list.job"
 multiprocessing_on = True
 
@@ -141,6 +145,107 @@ def debug_print(err_string):
         error_file.write(err_string + "\n")
         error_file.close()
 
+
+user_option_dont_autoread_bsa = False
+data_source_list_filename = "data_source_list.txt"
+data_source_tempfilename = "lookup_datasources.tmp"
+def Initialize_Data_Source_List():
+    data_source_list = list()
+    cleaned_datadir = os.path.normpath(input_datadir).replace("\\","/").lower() + "/"
+    if os.path.exists(cleaned_datadir):
+        data_source_list.append(cleaned_datadir)
+    # read in data_sources file to priority_list
+    if os.path.exists(data_source_list_filename):
+        priority_stream = open(data_source_list_filename, "r")
+        for raw_line in priority_stream:
+            line = raw_line.lower().rstrip("\r\n")
+            line = os.path.normpath(line).replace("\\","/")
+            if "/" not in line:
+                line = cleaned_datadir + line
+            if os.path.isdir(line):
+                if line[len(line)-1] is not "/":
+                    line = line + "/"
+            if os.path.exists(line) and line not in data_source_list:
+                data_source_list.append(line)
+        priority_stream.close()
+    if user_option_dont_autoread_bsa is True:
+        skip_autoread = True
+    else:
+        for BSAfile in glob.glob(cleaned_datadir + "*.bsa"):
+            line = os.path.normpath(BSAfile).lower().replace("\\","/")
+            if line not in data_source_list:
+                data_source_list.append(line)
+    # write data_source temp file
+    data_source_tempstream = open(data_source_tempfilename,"w")
+    for entry in data_source_list:
+        data_source_tempstream.write(entry + "\n")
+    data_source_tempstream.close()    
+
+def GetInputFileStream(filename):
+    data_source_list = list()
+    # load lookup_datasource tempfile
+    data_source_tempstream = open(data_source_tempfilename,"r")
+    for raw_line in data_source_tempstream:
+        line = raw_line.rstrip("\r\n")
+        print "datasource: " + line
+        if os.path.isdir(line):
+            # search for filename directly from path
+            if os.path.exists(line + filename):
+                # copy to tempfile and return tempfile_object
+                in_stream = open(line + filename, "rb")
+                tempfile_stream = tempfile.TemporaryFile()                
+                data = in_stream.read()
+                tempfile_stream.write(data)
+                in_stream.close()
+                tempfile_stream.seek(0)
+                data_source_tempstream.close()
+                return tempfile_stream
+            else:
+                continue
+        elif os.path.isfile(line):
+            # search for filename in BSA
+            # load bsa
+            bsa_stream = open(line, "rb")
+            bsa_data = BsaFormat.Data()
+            bsa_data.inspect(bsa_stream)
+            if ".nif" in filename.lower():
+                if bsa_data.file_flags.has_nif is False:
+                    continue
+            elif ".dds" in filename.lower():
+                if bsa_data.file_flags.has_dds is False:
+                    continue
+            file_is_compressed = bsa_data.archive_flags.is_compressed
+            bsa_data.read(bsa_stream)
+            for folder_block in bsa_data.folders:
+                for file_block in folder_block.files:
+                    bsa_filepath = folder_block.name + "/" + file_block.name
+                    bsa_filepath = os.path.normpath(bsa_filepath).replace("\\","/").lower()
+                    if bsa_filepath == filename:
+                        # get stream to filepath
+                        file_offset = file_block.offset
+                        file_size = file_block.file_size.num_bytes
+                        bsa_stream.seek(file_offset)
+                        file_originalsize = bsa_stream.read(4)
+                        if file_is_compressed:
+                            z_data = bsa_stream.read(file_size)
+                            file_data = zlib.decompress(z_data)
+                        else:
+                            file_data = bsa_stream.read(file_size)
+                        tempfile_stream = tempfile.TemporaryFile()
+                        tempfile_stream.write(file_data)
+                        bsa_stream.close()
+                        tempfile_stream.seek(0)
+                        data_source_tempstream.close()
+                        return tempfile_stream
+                    else:
+                        continue
+            bsa_stream.close()
+
+    data_source_tempstream.close()
+    # assume load failed
+    return None
+
+
 # launch blender
 def launchBlender(filename, reduction_scale_arg=0.95):
     if (reduction_scale_arg >= 1.0):
@@ -208,18 +313,13 @@ def launchGIMP_jobpool(joblist_file, reduction_scale_arg=0.125):
 #        debug_print(joblist + " success.\n")
         return 0  
 
+
 def perform_job_processNif(filename):
     global input_datadir
     global output_datadir
     global model_radius_threshold
     global nif_reduction_scale
 
-#    print "perform_job_test: filename = " + str(filename)
-#    print "DEBUG: input_datadir= " + str(input_datadir)
-#    print "DEBUG: output_datadir= " + str(output_datadir)
-#    print "DEBUG: opening temp lookup table: " + temp_lookup_file
-#    print "DEBUG: model_radius_threshold=" + str(model_radius_threshold)
-#    print "DEBUG: nif_reduction_scale=" + str(nif_reduction_scale)
     lookup_stream = open(temp_lookup_file, "r")
     ref_scale = None
     for line in lookup_stream:
@@ -230,9 +330,13 @@ def perform_job_processNif(filename):
     if ref_scale is None:
         print "ERROR: Could not parse lookup table! Quitting..."
         return
-    if os.path.exists(input_datadir + filename):
+#    if os.path.exists(input_datadir + filename):
 #        print " file found, calling processNif()..."
-        do_output = FarNifAutoGen_processNif.processNif(filename, radius_threshold_arg=model_radius_threshold, ref_scale=ref_scale, input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)
+#        do_output = FarNifAutoGen_processNif.processNif(filename, radius_threshold_arg=model_radius_threshold, ref_scale=ref_scale, input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)
+    tempfile_stream = GetInputFileStream(filename)
+    if tempfile_stream is not None:
+        do_output = FarNifAutoGen_processNif.processNifStream(tempfile_stream, filename, radius_threshold_arg=model_radius_threshold, ref_scale=ref_scale, input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)
+        tempfile_stream.close()
         #... call blender polyreducer
         if do_output == 1:
             debug_print(" DEBUG: spawn Blender polyreducer... (placeholder)")
@@ -247,6 +351,7 @@ def perform_job_processNif(filename):
     else:
         debug_print("processNif(" + filename + ") ERROR: file not found.")
     print "perform_job_processNif() complete. <============== "
+
 
 def perform_job_test(filename):
     global input_datadir
@@ -264,6 +369,9 @@ def main():
     global nif_joblist
     
     print "Starting FarNifAutoGen..."
+
+    # set up data_sources tempfile
+    Initialize_Data_Source_List()
 
     # set up output_dir
     if os.path.exists(output_datadir) == False:
@@ -338,10 +446,14 @@ def main():
         #======= Single-threaded processNif() ========
         for filename in nif_joblist:
     #        print "processing: " + input_datadir + filename + " ... using ref_scale=" + str(nif_joblist[filename])
-            if os.path.exists(input_datadir + filename):
+#            if os.path.exists(input_datadir + filename):
     #           print " file found, calling processNif()..."
-                do_output = FarNifAutoGen_processNif.processNif(filename, radius_threshold_arg=model_radius_threshold, ref_scale=nif_joblist[filename], input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)
+#                do_output = FarNifAutoGen_processNif.processNif(filename, radius_threshold_arg=model_radius_threshold, ref_scale=nif_joblist[filename], input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)
                 #... call blender polyreducer
+            tempfile_stream = GetInputFileStream(filename)
+            if tempfile_stream is not None:
+                do_output = FarNifAutoGen_processNif.processNifStream(tempfile_stream, filename, radius_threshold_arg=model_radius_threshold, ref_scale=nif_joblist[filename], input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)                
+                tempfile_stream.close()
                 if do_output is True:
     #                print " DEBUG: spawn Blender polyreducer"
                     launchBlender(FarNifAutoGen_processNif.output_filename_path, reduction_scale_arg=nif_reduction_scale)
@@ -378,17 +490,28 @@ def main():
 #                raw_input("EXCLUSIONS LIST TRIGGERED (DDS), press ENTER to continue.")
                 continue
 #            print "process dds file: " + input_datadir + input_filename
-            if os.path.exists(input_datadir + input_filename):
-#                print "  file found."
+
+##            if os.path.exists(input_datadir + input_filename):
+###                print "  file found."
+##                folderPath = os.path.dirname(output_datadir + output_filename)
+##                if os.path.exists(folderPath) == False:
+##                    os.makedirs(folderPath)
+##                try:
+##                    shutil.copy(input_datadir + input_filename, output_datadir + output_filename)
+##                except IOError:
+##                    debug_print("processDDS_joblist(" + input_filename + ") ERROR: copy file to output_datadir failed. Skipping to next file...")
+##                # call gimp resizer...
+###                launchGIMP(output_datadir + output_filename)
+            tempfile_stream = GetInputFileStream(input_filename)
+            if tempfile_stream is not None:
                 folderPath = os.path.dirname(output_datadir + output_filename)
                 if os.path.exists(folderPath) == False:
                     os.makedirs(folderPath)
-                try:
-                    shutil.copy(input_datadir + input_filename, output_datadir + output_filename)
-                except IOError:
-                    debug_print("processDDS_joblist(" + input_filename + ") ERROR: copy file to output_datadir failed. Skipping to next file...")
-                # call gimp resizer...
-#                launchGIMP(output_datadir + output_filename)
+                output_stream = open(output_datadir + output_filename, "wb")
+                data = tempfile_stream.read()
+                output_stream.write(data)
+                output_stream.close()
+                tempfile_stream.close()
             else:
 #                print "  file not found, skipping"
                 debug_print("processDDS_joblist(" + input_filename + ") ERROR: file not found.")

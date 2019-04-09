@@ -1,0 +1,6 @@
+c:\Games\bsacmd\out
+D:\devel\MorroblivionBSAs
+morrowind_ob - meshes.bsa
+morrowind_ob - textures.bsa
+oblivion - meshes.bsa
+oblivion - textures - compressed.bsa
