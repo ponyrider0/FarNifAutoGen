@@ -1,6 +1,7 @@
 import sys
 import os.path
 import multiprocessing
+import Queue
 import subprocess
 import time
 import glob
@@ -350,19 +351,24 @@ def launchGIMP_jobpool(joblist_file, reduction_scale_arg=0.125):
         return 0  
 
 
-def perform_job_processNif(filename):
+#def perform_job_processNif(filename):
+def perform_job_processNif(args):
+#    print "perform_job_processNif() called: " + str(args)
+    filename, ref_scale, mqueue = args[0][0], args[0][1], args[1]
+    
     global input_datadir
     global output_datadir
     global model_radius_threshold
     global nif_reduction_scale
 
-    lookup_stream = open(temp_lookup_file, "r")
-    ref_scale = None
-    for line in lookup_stream:
-        if filename in line:
-            key,ref_scale = line.split(':',1)
-            break
-    lookup_stream.close()    
+##    lookup_stream = open(temp_lookup_file, "r")
+##    ref_scale = None
+##    for line in lookup_stream:
+##        if filename in line:
+##            key,ref_scale = line.split(':',1)
+##            break
+##    lookup_stream.close()
+    
     if ref_scale is None:
         print "ERROR: Could not parse lookup table! Quitting..."
         return
@@ -375,7 +381,8 @@ def perform_job_processNif(filename):
         tempfile_stream.close()
         #... call blender polyreducer
         if do_output == 1:
-            debug_print(" DEBUG: spawn Blender polyreducer... (placeholder)")
+#            debug_print(" DEBUG: spawn Blender polyreducer... (placeholder)")
+            mqueue.put(filename[:-4] + "_far.nif")
             ## ====== leave a TODO file to polyreduce file ======= ##
 #            launchBlender(FarNifAutoGen_processNif.output_filename_path, reduction_scale_arg=nif_reduction_scale)
 #                raw_input("Press ENTER to continue.")
@@ -386,7 +393,7 @@ def perform_job_processNif(filename):
             debug_print("processNif(" + filename + "): unsupported file.  Skipping.")
     else:
         debug_print("processNif(" + filename + ") ERROR: file not found.")
-    print "perform_job_processNif() complete. <============== "
+#    print "perform_job_processNif() complete. <============== "
 
 
 def perform_job_prepareDDS(filename):
@@ -476,28 +483,58 @@ def main():
 
     if multiprocessing_on:
         #===== Multi-threaded processNif() =======
-        lookup_stream = open(temp_lookup_file, "w")
-        for key, value in nif_joblist.items():
-            lookup_stream.write('%s:%s\n' % (key, value))
-        lookup_stream.close()
+        manager = multiprocessing.Manager()
+        mqueue = manager.Queue()
+##        lookup_stream = open(temp_lookup_file, "w")
+##        for key, value in nif_joblist.items():
+##            lookup_stream.write('%s:%s\n' % (key, value))
+##        lookup_stream.close()
         # convert nif_joblist to jobpool
         jobpool = list()
         for line in nif_joblist:
-            jobpool.append(line)
+            jobpool.append([line, mqueue])
         # run jobpool
     #    if jobpool_processNif(jobpool) == -1:
     #        print "ERROR: jobpool processNif() interrupted."
         print "DEBUG: CPU_COUNT = " + str(CPU_COUNT)
         print "DEBUG: jobpool size = " + str(len(jobpool))
-        pool = multiprocessing.Pool(processes=CPU_COUNT)
-        result = pool.map_async(perform_job_processNif, jobpool)
+        pool = multiprocessing.Pool(processes=(CPU_COUNT-1))
+        result = pool.map_async(perform_job_processNif, [(x, mqueue) for x in nif_joblist.iteritems()])
+#        result = pool.map_async(perform_job_processNif, jobpool)
     #    result = pool.map_async(perform_job_test, jobpool)
+
+        while not result.ready() or mqueue.qsize() > 0:
+            try:
+                item = mqueue.get_nowait()
+            except Queue.Empty:
+                time.sleep(1)
+                continue
+            print "mqueue size = " + str(mqueue.qsize())
+            launchBlender(output_datadir + item, reduction_scale_arg=nif_reduction_scale)
+            FarNifAutoGen_processNif.postprocessNif(output_datadir + item)
+
+        print "mqueue size = " + str(mqueue.qsize())
+        raw_input("Parallel mqueue processing stopped. Press enter to continue waiting...")
+
         try:
             result.wait(timeout=99999999)
             pool.close()
             pool.join()
         except KeyboardInterrupt:
             print "ERROR: jobpool processNif() interrupted."
+
+        print "mqueue size = " + str(mqueue.qsize())
+        raw_input("Pool() processing complete. Press enter to process remainder of queue...")
+
+        while True:
+            try:
+                item = mqueue.get_nowait()
+            except Queue.Empty:
+                break
+#            print item
+            launchBlender(output_datadir + item, reduction_scale_arg=nif_reduction_scale)
+            FarNifAutoGen_processNif.postprocessNif(output_datadir + item)
+
     else:
         #======= Single-threaded processNif() ========
         for filename in nif_joblist:
@@ -512,7 +549,7 @@ def main():
                 tempfile_stream.close()
                 if do_output is True:
     #                print " DEBUG: spawn Blender polyreducer"
-                    launchBlender(FarNifAutoGen_processNif.output_filename_path, reduction_scale_arg=nif_reduction_scale)
+                    launchBlender(filename, reduction_scale_arg=nif_reduction_scale)
     #                raw_input("Press ENTER to continue.")
                 else:
     #                print "processNIF failed."
@@ -558,7 +595,7 @@ def main():
                     output_stream.write(data)
                     output_stream.close()
                     tempfile_stream.close()
-                    print "prepareDDS(" + input_filename + "): file copied and preped."
+                    print "prepareDDS(" + input_filename + "): complete."
                 else:
     #                print "  file not found, skipping"
                     debug_print("processDDS_joblist(" + input_filename + ") ERROR: file not found.")

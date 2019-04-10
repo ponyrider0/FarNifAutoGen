@@ -309,27 +309,28 @@ class NifImport(NifImportExport):
         #       function to an importData function
         data = NifFormat.Data()
         data.roots = [root_block]
-        if self.IMPORT_MERGESKELETONROOTS:
-            pyffi.spells.nif.fix.SpellMergeSkeletonRoots(data=data).recurse()
-        if self.IMPORT_SENDGEOMETRIESTOBINDPOS:
-            pyffi.spells.nif.fix.SpellSendGeometriesToBindPosition(data=data).recurse()
-        if self.IMPORT_SENDDETACHEDGEOMETRIESTONODEPOS:
-            pyffi.spells.nif.fix.SpellSendDetachedGeometriesToNodePosition(data=data).recurse()
-        if self.IMPORT_SENDBONESTOBINDPOS:
-            pyffi.spells.nif.fix.SpellSendBonesToBindPosition(data=data).recurse()
-        if self.IMPORT_APPLYSKINDEFORM:
-            for niBlock in root_block.tree(unique=True):
-                if not isinstance(niBlock, NifFormat.NiGeometry):
-                    continue
-                if not niBlock.is_skin():
-                    continue
-                self.logger.info('Applying skin deformation on geometry %s'
-                                 % niBlock.name)
-                vertices, normals = niBlock.get_skin_deformation()
-                for vold, vnew in izip(niBlock.data.vertices, vertices):
-                    vold.x = vnew.x
-                    vold.y = vnew.y
-                    vold.z = vnew.z
+## performance optimization
+##        if self.IMPORT_MERGESKELETONROOTS:
+##            pyffi.spells.nif.fix.SpellMergeSkeletonRoots(data=data).recurse()
+##        if self.IMPORT_SENDGEOMETRIESTOBINDPOS:
+##            pyffi.spells.nif.fix.SpellSendGeometriesToBindPosition(data=data).recurse()
+##        if self.IMPORT_SENDDETACHEDGEOMETRIESTONODEPOS:
+##            pyffi.spells.nif.fix.SpellSendDetachedGeometriesToNodePosition(data=data).recurse()
+##        if self.IMPORT_SENDBONESTOBINDPOS:
+##            pyffi.spells.nif.fix.SpellSendBonesToBindPosition(data=data).recurse()
+##        if self.IMPORT_APPLYSKINDEFORM:
+##            for niBlock in root_block.tree(unique=True):
+##                if not isinstance(niBlock, NifFormat.NiGeometry):
+##                    continue
+##                if not niBlock.is_skin():
+##                    continue
+##                self.logger.info('Applying skin deformation on geometry %s'
+##                                 % niBlock.name)
+##                vertices, normals = niBlock.get_skin_deformation()
+##                for vold, vnew in izip(niBlock.data.vertices, vertices):
+##                    vold.x = vnew.x
+##                    vold.y = vnew.y
+##                    vold.z = vnew.z
         
         # sets the root block parent to None, so that when crawling back the
         # script won't barf
@@ -342,7 +343,8 @@ class NifImport(NifImportExport):
         # scale tree
         toaster = pyffi.spells.nif.NifToaster()
         toaster.scale = self.IMPORT_SCALE_CORRECTION
-        pyffi.spells.nif.fix.SpellScale(data=data, toaster=toaster).recurse()
+## performance optimization
+##        pyffi.spells.nif.fix.SpellScale(data=data, toaster=toaster).recurse()
         
         # mark armature nodes and bones
         self.mark_armatures_bones(root_block)

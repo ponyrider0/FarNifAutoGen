@@ -679,7 +679,8 @@ class NifExport(NifImportExport):
                 data.roots = [root_block]
                 toaster = pyffi.spells.nif.NifToaster()
                 toaster.scale = self.EXPORT_SCALE_CORRECTION
-                pyffi.spells.nif.fix.SpellScale(data=data, toaster=toaster).recurse()
+## performance optimization
+##                pyffi.spells.nif.fix.SpellScale(data=data, toaster=toaster).recurse()
                 # also scale egm
                 if self.egmdata:
                     self.egmdata.apply_scale(self.EXPORT_SCALE_CORRECTION)
@@ -702,24 +703,24 @@ class NifExport(NifImportExport):
                                " simple primitives for collision.")
 
             # DEBUG: testing pyffi optimize here:
-            try:
-                pyffi.spells.nif.optimize.SpellOptimizeGeometry(data=data, toaster=toaster).recurse()
-            except:
-                optimize2.SpellOptimizeGeometry2(data=data, toaster=toaster).recurse()
-            pyffi.spells.nif.optimize.SpellOptimizeCollisionBox(data=data, toaster=toaster).recurse()
-            pyffi.spells.nif.optimize.SpellOptimizeCollisionGeometry(data=data, toaster=toaster).recurse()
-            pyffi.spells.nif.optimize.SpellMergeDuplicates(data=data, toaster=toaster).recurse()
-            pyffi.spells.nif.fix.SpellDelUnusedRoots(data=data, toaster=toaster).recurse()
-
-            # DEBUG: for _far nifs
-            if ("_far.nif" in self.EXPORT_FILE.lower()):
-                #pyffi.spells.nif.modify.SpellDelBSXFlags(data=data, toaster=toaster).recurse()
-                #pyffi.spells.nif.modify.SpellDelStringExtraDatas(data=data, toaster=toaster).recurse()
-                pyffi.spells.nif.fix.SpellDelTangentSpace(data=data, toaster=toaster).recurse()
-                #pyffi.spells.nif.modify.SpellDelCollisionData(data=data, toaster=toaster).recurse()
-                #pyffi.spells.nif.modify.SpellDelAnimation(data=data, toaster=toaster).recurse()
-                #pyffi.spells.nif.modify.SpellDisableParallax(data=data, toaster=toaster).recurse()
-                #pyffi.spells.nif.modify.SpellLowResTexturePath(data=data, toaster=toaster).recurse()
+## performance optimization
+##            try:
+##                pyffi.spells.nif.optimize.SpellOptimizeGeometry(data=data, toaster=toaster).recurse()
+##            except:
+##                optimize2.SpellOptimizeGeometry2(data=data, toaster=toaster).recurse()
+##            pyffi.spells.nif.optimize.SpellOptimizeCollisionBox(data=data, toaster=toaster).recurse()
+##            pyffi.spells.nif.optimize.SpellOptimizeCollisionGeometry(data=data, toaster=toaster).recurse()
+##            pyffi.spells.nif.optimize.SpellMergeDuplicates(data=data, toaster=toaster).recurse()
+##            pyffi.spells.nif.fix.SpellDelUnusedRoots(data=data, toaster=toaster).recurse()
+##            # DEBUG: for _far nifs
+##            if ("_far.nif" in self.EXPORT_FILE.lower()):
+##                #pyffi.spells.nif.modify.SpellDelBSXFlags(data=data, toaster=toaster).recurse()
+##                #pyffi.spells.nif.modify.SpellDelStringExtraDatas(data=data, toaster=toaster).recurse()
+##                pyffi.spells.nif.fix.SpellDelTangentSpace(data=data, toaster=toaster).recurse()
+##                #pyffi.spells.nif.modify.SpellDelCollisionData(data=data, toaster=toaster).recurse()
+##                #pyffi.spells.nif.modify.SpellDelAnimation(data=data, toaster=toaster).recurse()
+##                #pyffi.spells.nif.modify.SpellDisableParallax(data=data, toaster=toaster).recurse()
+##                #pyffi.spells.nif.modify.SpellLowResTexturePath(data=data, toaster=toaster).recurse()
 
             # delete original scene root if a scene root object was already
             # defined

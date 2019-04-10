@@ -82,12 +82,12 @@ def poly_reduce(ob, reduction = 0.5):
     PREF_DO_WEIGHTS= 1
     PREF_OTHER_SEL_OBS= 0
     t= Blender.sys.time()
-    print 'reducing:', act_ob.name, act_ob.getData(1)
+#    print 'reducing:', act_ob.name, act_ob.getData(1)
     redux(act_ob, PREF_REDUX, PREF_BOUNDRY_WEIGHT, PREF_REM_DOUBLES, PREF_FACE_AREA_WEIGHT, PREF_FACE_TRIANGULATE, PREF_DO_UV, PREF_DO_VCOL, PREF_DO_WEIGHTS, VGROUP_INF_REDUX, VGROUP_INF_WEIGHT)
     if PREF_OTHER_SEL_OBS:
         for ob in scn.objects.context:
             if ob.type == 'Mesh' and ob != act_ob:
-                print 'reducing:', ob.name, ob.getData(1)
+#                print 'reducing:', ob.name, ob.getData(1)
                 redux(ob, PREF_REDUX, PREF_BOUNDRY_WEIGHT, PREF_REM_DOUBLES, PREF_FACE_AREA_WEIGHT, PREF_FACE_TRIANGULATE, PREF_DO_UV, PREF_DO_VCOL, PREF_DO_WEIGHTS, VGROUP_INF_REDUX, VGROUP_INF_WEIGHT)
                 #Window.RedrawAll()
     print 'Reduction done in %.6f sec.' % (Blender.sys.time()-t)
@@ -110,7 +110,7 @@ if os.path.exists(in_file) == False:
 #    print "Output file already exists, skipping file..."
 #    Blender.Quit()
 if ("--reduction_scale" in argv):
-    reduction_scale = int(argv[argv.index("--reduction_scale") + 1])
+    reduction_scale = float(argv[argv.index("--reduction_scale") + 1])
 else:
     reduction_scale = 0.90
 if (reduction_scale >= 1.0):
@@ -190,8 +190,8 @@ config["ALPHA_PROP_THRESHOLD"] = nifimport.ALPHA_PROP_THRESHOLD
 
 
 #process objects, select meshes, ID/generate collision meshes
-print "----------"
-print "Selecting objects for export..."
+#print "----------"
+#print "Selecting objects for export..."
 bpy.data.scenes.active.objects.selected = []
 ob_selection = list()
 for ob in bpy.data.scenes.active.objects:
@@ -205,7 +205,7 @@ for ob in bpy.data.scenes.active.objects:
     if (True):
         # look for drawtype = shaded or textured
         if (ob.getDrawType() == 4) and ("collision" not in ob.name.lower()):
-            print "Selecting mesh for export: " + ob.name
+#            print "Selecting mesh for export: " + ob.name
             ob_selection.append(ob)
             #ob.select(True)
         else:
@@ -213,7 +213,7 @@ for ob in bpy.data.scenes.active.objects:
     else:
         print "skipping: " + ob.name
 
-print "Selection phase complete."
+#print "Selection phase complete."
 #raw_input("Press ENTER to continue.")
 
 
@@ -283,7 +283,7 @@ config["EXPORT_VERSION"] = 'Oblivion'
 config["EXPORT_FILE"] = out_file
 print "----------"
 if ("_far.nif" in in_file):
-    print "DEBUG: cleaning ob_selection..."
+#    print "DEBUG: cleaning ob_selection..."
     #raw_input("Press ENTER to continue:")
     print "Exporting _far.nif: " + out_file
     config["EXPORT_OBJECTS"] = ob_selection

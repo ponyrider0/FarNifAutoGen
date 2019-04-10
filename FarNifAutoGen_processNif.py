@@ -23,12 +23,12 @@ def init_logger():
     #loghandler.setLevel(logging.DEBUG)
     #logformatter = logging.Formatter("%(name)s:%(levelname)s:%(message)s")
     #loghandler.setFormatter(logformatter)
-    #pyffilogger.addHandler(loghandler)
+    pyffilogger.addHandler(loghandler)
     return pyffilogger, loghandler
 
 def shutdown_logger(pyffilogger, loghandler):
 #    print "shutdown_logger() entered"
-    #pyffilogger.removeHandler(loghandler)
+    pyffilogger.removeHandler(loghandler)
     return
 
 def init_paths(output_datadir_arg):
@@ -156,7 +156,7 @@ def calc_model_minmax(model_minx, model_miny, model_minz, model_maxx, model_maxy
     dz2 = dz*dz
     model_radius = (dx2 + dy2 + dz2) ** 0.5
     model_radius = model_radius / 2
-    print "calc_model_minmax: model radius = " + str(model_radius)
+#    print "calc_model_minmax: model radius = " + str(model_radius)
     return float(model_radius)
 
 def cull_nifdata(x):
@@ -218,6 +218,21 @@ def output_ddslist(dds_list, output_root):
     ostream.close()
 #    print "leaving output_ddslist()"
 
+def postprocessNif(filename):
+    pyffilogger, loghandler = init_logger()
+    input_stream = open(filename, "rb")
+    nifdata = NifFormat.Data()
+    nifdata.read(input_stream)
+    input_stream.close()
+    #nifdata = cull_nifdata(nifdata)
+    nifdata = optimize_nifdata(nifdata)
+    output_stream = open(filename, "wb")
+    nifdata.write(output_stream)
+    output_stream.close()
+    shutdown_logger(pyffilogger, loghandler)
+    print "PostProcessing(" + filename + ") complete."
+    
+
 def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0), input_datadir_arg=None, output_datadir_arg=None):
     input_stream = open(input_filename, "rb")
     returnval = processNifStream(input_stream, input_filename, radius_threshold_arg, ref_scale, input_datadir_arg, output_datadir_arg)
@@ -241,8 +256,8 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
     root0 = None
     output_filename_path = None
 
-    print "processNIF(): Processing " + input_filename + " ..."
-    pyffilogger, loghandler = init_logger()
+#    print "processNIF(): Processing " + input_filename + " ..."
+#    pyffilogger, loghandler = init_logger()
     output_root = init_paths(output_datadir_arg)
 
     UVController_workaround = False
@@ -356,7 +371,7 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
 #        print "calling output_ddslist(dds_list)"
         output_ddslist(dds_list, output_root)
 #    print "calling shutdown_logger()"
-    shutdown_logger(pyffilogger, loghandler)
+#    shutdown_logger(pyffilogger, loghandler)
 #    print "processNIF(): complete."
     return do_output
 
