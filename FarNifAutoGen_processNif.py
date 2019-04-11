@@ -40,6 +40,22 @@ def init_paths(output_datadir_arg):
         output_root = output_datadir
     return output_root
 
+## ============ DISABLED until rewritten as class ===============
+def log_error(err_string, error_filename="error_list.txt"):
+    writemode = 'a'
+    if not os.path.exists(error_filename):
+        writemode = 'w'
+#    with open(error_filename, writemode) as error_file:
+#        error_file.write(err_string + "\n")
+def debug_print(err_string, error_filename="error_list.txt"):
+    print "=======> FarNifAutoGen_processNif.debug_print(): " + err_string + " <========="
+    writemode = 'a'
+    if not os.path.exists(error_filename):
+        writemode = 'w'
+#    with open(error_filename, writemode) as error_file:
+#        error_file.write(err_string + "\n")
+#        error_file.close()
+
 def load_nif(input_filename):
 #    print "load_nif() entered"
     fstream = open(input_filename, 'rb')
@@ -195,8 +211,9 @@ def output_niffile(nifdata, input_filename, output_datadir):
         if os.path.exists(folderPath) == False:
             os.makedirs(folderPath)
     except:
-        print "processNif() ERROR: could not create destination directory: " + folderPath
+        debug_print("processNif() ERROR: could not create destination directory: " + str(folderPath))
     print "outputing: " + output_filename
+#    debug_print("outputting: " + output_filename)
     ostream = open(output_filename_path, 'wb')
     nifdata.write(ostream)
     ostream.close()
@@ -219,17 +236,17 @@ def output_ddslist(dds_list, output_root):
 #    print "leaving output_ddslist()"
 
 def postprocessNif(filename):
-    pyffilogger, loghandler = init_logger()
+#    pyffilogger, loghandler = init_logger()
     input_stream = open(filename, "rb")
     nifdata = NifFormat.Data()
     nifdata.read(input_stream)
     input_stream.close()
-    #nifdata = cull_nifdata(nifdata)
+    nifdata = cull_nifdata(nifdata)
     nifdata = optimize_nifdata(nifdata)
     output_stream = open(filename, "wb")
     nifdata.write(output_stream)
     output_stream.close()
-    shutdown_logger(pyffilogger, loghandler)
+#    shutdown_logger(pyffilogger, loghandler)
     print "PostProcessing(" + filename + ") complete."
     
 
@@ -259,6 +276,9 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
 #    print "processNIF(): Processing " + input_filename + " ..."
 #    pyffilogger, loghandler = init_logger()
     output_root = init_paths(output_datadir_arg)
+
+#=========== DISABLED until rewritten as class ===========
+#    error_filename = output_root + "error_list.txt"
 
     UVController_workaround = False
 
@@ -332,7 +352,8 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
                                 sourcetextures_list.append(prop.normal_texture.source)                                
                 # 2. then process any texture properties
                 for sourcetexture in sourcetextures_list:
-                    dds_list = process_NiSourceTexture(sourcetexture, dds_list, block_has_alpha_prop)
+                    if sourcetexture is not None:
+                        dds_list = process_NiSourceTexture(sourcetexture, dds_list, block_has_alpha_prop)
                 # 3. now add alpha property if not preset
                 if block_has_alpha_prop is False:
                     block.add_property(alphablock)
