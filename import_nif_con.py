@@ -1417,59 +1417,60 @@ class NifImport(NifImportExport):
             searchPathList = (
                 [importpath]
                 + self.IMPORT_TEXTURE_PATH)
-            if Blender.Get("texturesdir"):
-                searchPathList += [
-                    Blender.sys.dirname(Blender.Get("texturesdir"))]
-            # if it looks like a Morrowind style path, use common sense to
-            # guess texture path
-            meshes_index = importpath.lower().find("meshes")
-            if meshes_index != -1:
-                searchPathList.append(importpath[:meshes_index] + 'textures')
-            # if it looks like a Civilization IV style path, use common sense
-            # to guess texture path
-            art_index = importpath.lower().find("art")
-            if art_index != -1:
-                searchPathList.append(importpath[:art_index] + 'shared')
-            # go through all texture search paths
-            for texdir in searchPathList:
-                texdir = texdir.replace( '\\', Blender.sys.sep )
-                texdir = texdir.replace( '/', Blender.sys.sep )
-                # go through all possible file names, try alternate extensions
-                # too; for linux, also try lower case versions of filenames
-                texfns = reduce(operator.add,
-                                [ [ fn[:-4]+ext, fn[:-4].lower()+ext ]
-                                  for ext in ('.DDS','.dds','.PNG','.png',
-                                             '.TGA','.tga','.BMP','.bmp',
-                                             '.JPG','.jpg') ] )
-                texfns = [fn, fn.lower()] + list(set(texfns))
-                for texfn in texfns:
-                     # now a little trick, to satisfy many Morrowind mods
-                    if (texfn[:9].lower() == 'textures' + Blender.sys.sep) \
-                       and (texdir[-9:].lower() == Blender.sys.sep + 'textures'):
-                        # strip one of the two 'textures' from the path
-                        tex = Blender.sys.join( texdir[:-9], texfn )
-                    else:
-                        tex = Blender.sys.join( texdir, texfn )
-                    self.logger.debug("Searching %s" % tex)
-                    if Blender.sys.exists(tex) == 1:
-                        # tries to load the file
-                        b_image = Blender.Image.Load(tex)
-                        # Blender will return an image object even if the
-                        # file format is not supported,
-                        # so to check if the image is actually loaded an error
-                        # is forced via "b_image.size"
-                        try:
-                            b_image.size
-                        except: # RuntimeError: couldn't load image data in Blender
-                            b_image = None # not supported, delete image object
-                        else:
-                            # file format is supported
-                            self.logger.debug("Found '%s' at %s" % (fn, tex))
-                            break
-                if b_image:
-                    break
-            else:
-                tex = Blender.sys.join(searchPathList[0], fn)
+##            if Blender.Get("texturesdir"):
+##                searchPathList += [
+##                    Blender.sys.dirname(Blender.Get("texturesdir"))]
+##            # if it looks like a Morrowind style path, use common sense to
+##            # guess texture path
+##            meshes_index = importpath.lower().find("meshes")
+##            if meshes_index != -1:
+##                searchPathList.append(importpath[:meshes_index] + 'textures')
+##            # if it looks like a Civilization IV style path, use common sense
+##            # to guess texture path
+##            art_index = importpath.lower().find("art")
+##            if art_index != -1:
+##                searchPathList.append(importpath[:art_index] + 'shared')
+##            # go through all texture search paths
+##            for texdir in searchPathList:
+##                texdir = texdir.replace( '\\', Blender.sys.sep )
+##                texdir = texdir.replace( '/', Blender.sys.sep )
+##                # go through all possible file names, try alternate extensions
+##                # too; for linux, also try lower case versions of filenames
+##                texfns = reduce(operator.add,
+##                                [ [ fn[:-4]+ext, fn[:-4].lower()+ext ]
+##                                  for ext in ('.DDS','.dds','.PNG','.png',
+##                                             '.TGA','.tga','.BMP','.bmp',
+##                                             '.JPG','.jpg') ] )
+##                texfns = [fn, fn.lower()] + list(set(texfns))
+##                for texfn in texfns:
+##                     # now a little trick, to satisfy many Morrowind mods
+##                    if (texfn[:9].lower() == 'textures' + Blender.sys.sep) \
+##                       and (texdir[-9:].lower() == Blender.sys.sep + 'textures'):
+##                        # strip one of the two 'textures' from the path
+##                        tex = Blender.sys.join( texdir[:-9], texfn )
+##                    else:
+##                        tex = Blender.sys.join( texdir, texfn )
+##                    self.logger.debug("Searching %s" % tex)
+##                    if Blender.sys.exists(tex) == 1:
+##                        # tries to load the file
+##                        b_image = Blender.Image.Load(tex)
+##                        # Blender will return an image object even if the
+##                        # file format is not supported,
+##                        # so to check if the image is actually loaded an error
+##                        # is forced via "b_image.size"
+##                        try:
+##                            b_image.size
+##                        except: # RuntimeError: couldn't load image data in Blender
+##                            b_image = None # not supported, delete image object
+##                        else:
+##                            # file format is supported
+##                            self.logger.debug("Found '%s' at %s" % (fn, tex))
+##                            break
+##                if b_image:
+##                    break
+##            else:
+##                tex = Blender.sys.join(searchPathList[0], fn)
+            tex = Blender.sys.join(searchPathList[0], fn)
 
         # create a stub image if the image could not be loaded
         if not b_image:
