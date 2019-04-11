@@ -22,6 +22,7 @@ import zlib
 #os.environ["BLENDEREXE"] = "C:/Blender/blender.exe"
 #os.environ["FARNIFAUTOGEN_INPUT_DATADIR"] = "C:/Games/bsacmd/out/"
 #os.environ["NIF_JOBLIST_FILE"] = "nif_list_test_vivec_only.job"
+#os.environ["NIF_JOBLIST_FILE"] = "nif_list_morroblivion.job"
 #os.environ["DDS_JOBLIST_FILE"] = "lowres_list.job"
 multiprocessing_on = True
 
@@ -280,6 +281,7 @@ def GetInputFileStream(filename):
 
     data_source_tempstream.close()
     # assume load failed
+    debug_print("GetInputFileStream(" + filename + ") ERROR: could not load file from any data_source.")
     return None
 
 
@@ -367,11 +369,11 @@ def perform_job_processNif(args):
 ##        if filename in line:
 ##            key,ref_scale = line.split(':',1)
 ##            break
-##    lookup_stream.close()
+##    lookup_stream.close()    
+##    if ref_scale is None:
+##        print "ERROR: Could not parse lookup table! Quitting..."
+##        return
     
-    if ref_scale is None:
-        print "ERROR: Could not parse lookup table! Quitting..."
-        return
 #    if os.path.exists(input_datadir + filename):
 #        print " file found, calling processNif()..."
 #        do_output = FarNifAutoGen_processNif.processNif(filename, radius_threshold_arg=model_radius_threshold, ref_scale=ref_scale, input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)
@@ -382,10 +384,9 @@ def perform_job_processNif(args):
         #... call blender polyreducer
         if do_output == 1:
 #            debug_print(" DEBUG: spawn Blender polyreducer... (placeholder)")
+            debug_print("DEBUG: processNif(" + filename + "): function successful, handing off to Blender....")
             mqueue.put(filename[:-4] + "_far.nif")
-            ## ====== leave a TODO file to polyreduce file ======= ##
-#            launchBlender(FarNifAutoGen_processNif.output_filename_path, reduction_scale_arg=nif_reduction_scale)
-#                raw_input("Press ENTER to continue.")
+#            launchBlender(output_datadir + filename[:-4] + "_far.nif", reduction_scale_arg=nif_reduction_scale)
         elif do_output == 0:
             debug_print("processNif(" + filename + "): model radius below user-defined threshold, skipping.")
 #                print "processNIF failed."
@@ -409,12 +410,11 @@ def perform_job_prepareDDS(filename):
         data = tempfile_stream.read()
         output_stream.write(data)
         output_stream.close()
-        tempfile_stream.close()
+        tempfile_stream.close()    
+        debug_print("perform_job_prepareDDS(" + input_filename + "): DEBUG: extraction complete.")
     else:
 #        print "perform_job_prepareDDS(" + input_filename + "): ERROR: file not found, skipping"
         debug_print("perform_job_prepareDDS(" + input_filename + ") ERROR: file not found.")
-    print "perform_job_prepareDDS(" + input_filename + ") complete."
-
 
 def perform_job_test(filename):
     global input_datadir
@@ -473,6 +473,7 @@ def main():
         nif_filename = nif_filename.replace("\\","/")
         if nif_filename in exclusions_list:
 #            raw_input("EXCLUSIONS LIST TRIGGERED, press ENTER to continue.")
+            debug_print("Exlusions List(" + nif_filename + "): exclusion detected, skipping.")
             continue
         if nif_joblist.get(nif_filename) == None:
             nif_joblist[nif_filename] = float(ref_scale)
@@ -490,15 +491,15 @@ def main():
 ##            lookup_stream.write('%s:%s\n' % (key, value))
 ##        lookup_stream.close()
         # convert nif_joblist to jobpool
-        jobpool = list()
-        for line in nif_joblist:
-            jobpool.append([line, mqueue])
+#        jobpool = list()
+#        for x in nif_joblist.iteritems():
+#            jobpool.append([x, mqueue])
         # run jobpool
     #    if jobpool_processNif(jobpool) == -1:
     #        print "ERROR: jobpool processNif() interrupted."
         print "DEBUG: CPU_COUNT = " + str(CPU_COUNT)
-        print "DEBUG: jobpool size = " + str(len(jobpool))
-        pool = multiprocessing.Pool(processes=(CPU_COUNT-1))
+        print "DEBUG: jobpool size = " + str(len(nif_joblist))
+        pool = multiprocessing.Pool(processes=CPU_COUNT)
         result = pool.map_async(perform_job_processNif, [(x, mqueue) for x in nif_joblist.iteritems()])
 #        result = pool.map_async(perform_job_processNif, jobpool)
     #    result = pool.map_async(perform_job_test, jobpool)
@@ -513,8 +514,8 @@ def main():
             launchBlender(output_datadir + item, reduction_scale_arg=nif_reduction_scale)
             FarNifAutoGen_processNif.postprocessNif(output_datadir + item)
 
-        print "mqueue size = " + str(mqueue.qsize())
-        raw_input("Parallel mqueue processing stopped. Press enter to continue waiting...")
+#        print "mqueue size = " + str(mqueue.qsize())
+#        raw_input("Parallel mqueue processing stopped. Press enter to continue waiting...")
 
         try:
             result.wait(timeout=99999999)
@@ -522,9 +523,6 @@ def main():
             pool.join()
         except KeyboardInterrupt:
             print "ERROR: jobpool processNif() interrupted."
-
-        print "mqueue size = " + str(mqueue.qsize())
-        raw_input("Pool() processing complete. Press enter to process remainder of queue...")
 
         while True:
             try:
@@ -547,7 +545,7 @@ def main():
             if tempfile_stream is not None:
                 do_output = FarNifAutoGen_processNif.processNifStream(tempfile_stream, filename, radius_threshold_arg=model_radius_threshold, ref_scale=nif_joblist[filename], input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)                
                 tempfile_stream.close()
-                if do_output is True:
+                if do_output == 1:
     #                print " DEBUG: spawn Blender polyreducer"
                     launchBlender(filename, reduction_scale_arg=nif_reduction_scale)
     #                raw_input("Press ENTER to continue.")
@@ -573,7 +571,8 @@ def main():
                 output_filename, tags = dds_filename.split(",", 1)
                 input_filename = output_filename.replace("lowres/", "")
                 if input_filename in exclusions_list:
-                    raw_input("EXCLUSIONS LIST TRIGGERED (DDS), press ENTER to continue.")
+                    debug_print("Exlusions List(" + input_filename + "): exclusion detected, skipping.")
+#                    raw_input("EXCLUSIONS LIST TRIGGERED (DDS), press ENTER to continue.")
                     continue
                 dds_joblist.append(dds_filename)
         ddsjob_stream.close()
