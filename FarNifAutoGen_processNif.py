@@ -9,6 +9,16 @@ import pyffi.spells.nif.fix
 import pyffi.spells.nif.optimize
 import pyffi.spells.nif
 
+from pyffi.utils.tristrip import triangulate
+from pyffi.utils.tristrip import stripify
+
+# PyProgMesh Path
+if (os.environ.get("PYPROGMESH_HOME") is not None):
+    progmesh_home = os.environ["PYPROGMESH_HOME"]
+else:
+    progmesh_home = "/."
+sys.path.append(progmesh_home)
+import pyprogmesh
 
 class SpellDelTextures(pyffi.spells.nif.modify._SpellDelBranchClasses):
     SPELLNAME = "modify_deltextures"
@@ -17,7 +27,7 @@ class SpellDelTextures(pyffi.spells.nif.modify._SpellDelBranchClasses):
 
 def init_logger():
 #    print "init_logger() entered"
-    pyffilogger = logging.getLogger("pyffi")
+    pyffilogger = logging.getLogger("pyffi.toaster")
     loghandler = logging.StreamHandler()
     pyffilogger.setLevel(logging.ERROR)
     #loghandler.setLevel(logging.DEBUG)
@@ -250,13 +260,13 @@ def postprocessNif(filename):
     print "PostProcessing(" + filename + ") complete."
     
 
-def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0), input_datadir_arg=None, output_datadir_arg=None):
+def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0), input_datadir_arg=None, output_datadir_arg=None, decimation_ratio=0.8):
     input_stream = open(input_filename, "rb")
-    returnval = processNifStream(input_stream, input_filename, radius_threshold_arg, ref_scale, input_datadir_arg, output_datadir_arg)
+    returnval = processNifStream(input_stream, input_filename, radius_threshold_arg, ref_scale, input_datadir_arg, output_datadir_arg, decimation_ratio)
     input_stream.close()
     return returnval
 
-def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0), input_datadir_arg=None, output_datadir_arg=None):
+def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0), input_datadir_arg=None, output_datadir_arg=None, decimation_ratio=0.8, keep_border=False):
 #    print "\n\nprocessNif() entered"
     # intialize globals
     model_has_alpha_prop = False
@@ -286,6 +296,8 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
     alphablock = NifFormat.NiAlphaProperty()
     alphablock.flags = 4844
     alphablock.threshold = 0
+
+    block_decimation_list = list()
 
 #    print "load_nif(input_filename)"
 #    nifdata = load_nif(input_datadir_arg + input_filename)
@@ -360,6 +372,7 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
                 # check for VertexData, calculate model_min/max if present
                 if block.data is not None:
                     model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz = process_NiTriShapeData(block.data, root0, model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)
+                    block_decimation_list.append(block)
     if (model_minx is not None):
 #        print "calling calc_model_minmax()"
         model_radius = calc_model_minmax(model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)      
@@ -385,14 +398,123 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
     else:
         #output file....
         do_output = 1
+
+        # decimate blocks
+        for block in block_decimation_list:
+            print "DEBUG: Decimating file[%s] block[#%s]..." % (input_filename, block.name)
+            PMBlock(block.data, decimation_ratio, keep_border)
+        
 #        print "calling optimize_nifdata(nifdata)"
         nifdata = optimize_nifdata(nifdata)
 #        print "calling output_niffile(nifdata, input_filename, output_datadir)"
         output_niffile(nifdata, input_filename, output_datadir_arg)
 #        print "calling output_ddslist(dds_list)"
         output_ddslist(dds_list, output_root)
+        
 #    print "calling shutdown_logger()"
 #    shutdown_logger(pyffilogger, loghandler)
 #    print "processNIF(): complete."
     return do_output
 
+
+def PMBlock(block, decimation_ratio, keep_border=False):
+#    print "========================NEW BLOCK========================="
+    verts = list()
+    faces = list()
+    PMSettings = pyprogmesh.ProgMeshSettings()
+    if block.num_uv_sets > 0 or block.has_uv:
+        PMSettings.ProtectTexture = True
+#    if block.has_vertex_colors:
+#        PMSettings.ProtectColor = True
+    PMSettings.RemoveDuplicate = True
+    PMSettings.KeepBorder = keep_border
+
+    for i in range(0, len(block.vertices)):
+        _v = block.vertices[i]
+#        print "vertex: (%f, %f, %f)" % (_v.x, _v.y, _v.z)
+        v = [_v.x, _v.y, _v.z]
+        if block.num_uv_sets > 0 or block.has_uv:
+            _uv = [block.uv_sets[0][i].u, block.uv_sets[0][i].v]
+        else:
+            _uv = None
+        if block.has_normals:
+            _normal = [block.normals[i].x, block.normals[i].y, block.normals[i].z]
+        else:
+            _normal = None
+        if block.has_vertex_colors:
+            _vc = [block.vertex_colors[i].r, block.vertex_colors[i].g, block.vertex_colors[i].b, block.vertex_colors[i].a]
+        else:
+            _vc = None
+        verts.append(pyprogmesh.RawVertex(Position=v, UV=_uv, Normal=_normal, RGBA=_vc))
+
+##    if isinstance(block, NifFormat.NiTriShapeData):
+##        triangles = block.triangles
+##    else:
+    triangles = block.get_triangles()
+        
+    for i in range(0, len(triangles)):
+        _t = triangles[i]
+#        print "triangle: [%d, %d, %d]" % (_t.v_1, _t.v_2, _t.v_3)
+#        f = [_t.v_1, _t.v_2, _t.v_3]
+        faces.append(_t)
+    print "PREP: old verts = %d, old faces = %d" % (len(verts), len(faces))
+    print "Decimation Ratio: %f" % (decimation_ratio)
+    pm = pyprogmesh.ProgMesh(len(verts), len(faces), verts, faces, PMSettings)
+#    raw_input("Press ENTER to compute progressive mesh.")
+    pm.ComputeProgressiveMesh()
+#    raw_input("Press ENTER to perform decimation.")
+    result = pm.DoProgressiveMesh(decimation_ratio)
+    if result == 0:
+        print "Decimation failed"
+        return
+    else:
+        numVerts, verts, numFaces, faces = result[0], result[1], result[2], result[3]
+        print "RESULTS: new verts = %d, new faces = %d" % (numVerts, numFaces)
+        block.num_vertices = numVerts
+        block.vertices.update_size()
+        if block.num_uv_sets > 0 or block.has_uv:
+            block.uv_sets.update_size()
+        if block.has_normals:
+            block.normals.update_size()
+        if block.has_vertex_colors:
+            block.vertex_colors.update_size()
+        for i in range(0, numVerts):
+            rawVert = verts[i]
+            v = block.vertices[i]
+            v.x = rawVert.Position[0]
+            v.y = rawVert.Position[1]
+            v.z = rawVert.Position[2]
+            if block.num_uv_sets > 0 or block.has_uv:
+                uv = block.uv_sets[0][i]
+                uv.u = rawVert.UV[0]
+                uv.v = rawVert.UV[1]
+            if block.has_normals:
+                normals = block.normals[i]
+                normals.x = rawVert.Normal[0]
+                normals.y = rawVert.Normal[1]
+                normals.z = rawVert.Normal[2]
+            if block.has_vertex_colors:
+                vc = block.vertex_colors[i]
+                vc.r = rawVert.RGBA[0]
+                vc.g = rawVert.RGBA[1]
+                vc.b = rawVert.RGBA[2]
+                vc.a = rawVert.RGBA[3]
+
+        if isinstance(block, NifFormat.NiTriShapeData):
+            print "DEBUG: triangulating..."
+            block.num_triangles = numFaces
+            block.triangles.update_size()
+            block.set_triangles(faces)
+##            for i in range(0, numFaces):
+##                triangle = faces[i]
+##                t = block.triangles[i]
+##                t.v_1 = triangle[0]
+##                t.v_2 = triangle[1]
+##                t.v_3 = triangle[2]
+        else:
+            print "DEBUG: stripifying..."
+            strips = stripify(faces)
+            block.num_strips = len(strips)
+#            block.strips.update_size()
+            block.set_strips(strips)
+            

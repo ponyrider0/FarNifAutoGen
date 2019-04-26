@@ -1,3 +1,15 @@
+import os
+
+# custom settings
+#os.environ["BLENDEREXE"] = "C:/Blender/blender.exe"
+#os.environ["FARNIFAUTOGEN_INPUT_DATADIR"] = "C:/Games/bsacmd/out/"
+#os.environ["NIF_JOBLIST_FILE"] = "nif_list_test_vivec_only.job"
+#os.environ["NIF_JOBLIST_FILE"] = "nif_list_morroblivion.job"
+#os.environ["NIF_JOBLIST_FILE"] = "nif_list_testing.job"
+#os.environ["DDS_JOBLIST_FILE"] = "lowres_list.job"
+multiprocessing_on = True
+os.environ["PYPROGMESH_HOME"] = "C:/dev/PyProgMesh/"
+
 import sys
 import os.path
 import multiprocessing
@@ -11,20 +23,20 @@ import tempfile
 from os import listdir, makedirs
 from os.path import isfile, join
 
+from pyffi.formats.bsa import BsaFormat
+import zlib
+
 import FarNifAutoGen_processNif
 #from FarNifAutoGen_processNif import processNif
 #from FarNifAutoGen_processNif import output_filename_path
 
-from pyffi.formats.bsa import BsaFormat
-import zlib
-
-# custom settings
-#os.environ["BLENDEREXE"] = "C:/Blender/blender.exe"
-#os.environ["FARNIFAUTOGEN_INPUT_DATADIR"] = "C:/Games/bsacmd/out/"
-#os.environ["NIF_JOBLIST_FILE"] = "nif_list_test_vivec_only.job"
-#os.environ["NIF_JOBLIST_FILE"] = "nif_list_morroblivion.job"
-#os.environ["DDS_JOBLIST_FILE"] = "lowres_list.job"
-multiprocessing_on = True
+# PyProgMesh Path
+if (os.environ.get("PYPROGMESH_HOME") is not None):
+    progmesh_home = os.environ["PYPROGMESH_HOME"]
+else:
+    progmesh_home = "/."
+sys.path.append(progmesh_home)
+import pyprogmesh
 
 # set up user-defined settings
 if (os.environ.get("NIF_JOBLIST_FILE") is not None):
@@ -357,6 +369,15 @@ def launchGIMP_jobpool(joblist_file, reduction_scale_arg=0.125):
         return 0  
 
 
+def perform_job_processNif_safe(args):
+    filename, ref_scale, mqueue = args[0][0], args[0][1], args[1]    
+    try:
+        perform_job_processNif(args)
+    except Exception as e:
+        # pass error back in queue
+        mqueue.put(e)
+
+
 #def perform_job_processNif(filename):
 def perform_job_processNif(args):
 #    print "perform_job_processNif() called: " + str(args)
@@ -384,18 +405,34 @@ def perform_job_processNif(args):
 
     tempfile_stream = GetInputFileStream(filename)
     if tempfile_stream is not None:
+##        if "terrain" in filename or "rock" in filename:
+##            mod_threshold = model_radius_threshold * terrain_threshold_multiplier
+##        elif "flora" in filename or "tree" in filename:
+##            mod_threshold = model_radius_threshold * flora_threshold_multiplier
+##        else:
+##            mod_threshold = model_radius_threshold
+
+        keep_border = False
         if "terrain" in filename or "rock" in filename:
             mod_threshold = model_radius_threshold * terrain_threshold_multiplier
+            mod_reduction = nif_reduction_scale - terrain_reduction_modifier
         elif "flora" in filename or "tree" in filename:
             mod_threshold = model_radius_threshold * flora_threshold_multiplier
+            mod_reduction = nif_reduction_scale - flora_reduction_modifier
         else:
             mod_threshold = model_radius_threshold
-        do_output = FarNifAutoGen_processNif.processNifStream(tempfile_stream, filename, radius_threshold_arg=mod_threshold, ref_scale=ref_scale, input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)
+            mod_reduction = nif_reduction_scale
+            keep_border = True
+
+        if nif_reduction_scale <= 0.26:
+            mod_reduction = nif_reduction_scale
+        
+        do_output = FarNifAutoGen_processNif.processNifStream(tempfile_stream, filename, radius_threshold_arg=mod_threshold, ref_scale=ref_scale, input_datadir_arg=input_datadir, output_datadir_arg=output_datadir, decimation_ratio=mod_reduction, keep_border=keep_border)
         tempfile_stream.close()
         #... call blender polyreducer
         if do_output == 1:
 #            debug_print(" DEBUG: spawn Blender polyreducer... (placeholder)")
-            debug_print("DEBUG: processNif(" + filename + "): function successful, handing off to Blender....")
+            debug_print("DEBUG: processNif(" + filename + "): function successful.")
             mqueue.put(filename[:-4] + "_far.nif")
 #            launchBlender(output_datadir + filename[:-4] + "_far.nif", reduction_scale_arg=nif_reduction_scale)
         elif do_output == 0:
@@ -511,32 +548,35 @@ def main():
         print "DEBUG: CPU_COUNT = " + str(CPU_COUNT)
         print "DEBUG: jobpool size = " + str(len(nif_joblist))
         pool = multiprocessing.Pool(processes=CPU_COUNT)
-        result = pool.map_async(perform_job_processNif, [(x, mqueue) for x in nif_joblist.iteritems()])
-#        result = pool.map_async(perform_job_processNif, jobpool)
+        map_async_result = pool.map_async(perform_job_processNif_safe, [(x, mqueue) for x in nif_joblist.iteritems()])
+#        result = pool.map_async(perform_job_processNif_safe, jobpool)
 
-        while not result.ready() or mqueue.qsize() > 0:
+        while not map_async_result.ready() or mqueue.qsize() > 0:
             try:
-                out_filename = mqueue.get_nowait()
+                mqueue_result = mqueue.get_nowait()
             except Queue.Empty:
                 time.sleep(1)
                 continue
             print "mqueue size = " + str(mqueue.qsize())
 
-            if "terrain" in out_filename or "rock" in out_filename:
-                mod_reduction = nif_reduction_scale - terrain_reduction_modifier
-            elif "flora" in out_filename or "tree" in out_filename:
-                mod_reduction = nif_reduction_scale - flora_reduction_modifier
+            if isinstance(mqueue_result, Exception):
+                raise mqueue_result
             else:
-                mod_reduction = nif_reduction_scale
-
-            launchBlender(output_datadir + out_filename, reduction_scale_arg=mod_reduction)
-            FarNifAutoGen_processNif.postprocessNif(output_datadir + out_filename)
+                out_filename = mqueue_result
+                if "terrain" in out_filename or "rock" in out_filename:
+                    mod_reduction = nif_reduction_scale - terrain_reduction_modifier
+                elif "flora" in out_filename or "tree" in out_filename:
+                    mod_reduction = nif_reduction_scale - flora_reduction_modifier
+                else:
+                    mod_reduction = nif_reduction_scale
+    #            launchBlender(output_datadir + out_filename, reduction_scale_arg=mod_reduction)
+                FarNifAutoGen_processNif.postprocessNif(output_datadir + out_filename)
 
 #        print "mqueue size = " + str(mqueue.qsize())
 #        raw_input("Parallel mqueue processing stopped. Press enter to continue waiting...")
 
         try:
-            result.wait(timeout=99999999)
+            map_async_result.wait(timeout=99999999)
             pool.close()
             pool.join()
         except KeyboardInterrupt:
@@ -544,20 +584,23 @@ def main():
 
         while True:
             try:
-                out_filename = mqueue.get_nowait()
+                mqueue_result = mqueue.get_nowait()
             except Queue.Empty:
                 break
 #            print item
 
-            if "terrain" in out_filename or "rock" in out_filename:
-                mod_reduction = nif_reduction_scale - terrain_reduction_modifier
-            elif "flora" in out_filename or "tree" in out_filename:
-                mod_reduction = nif_reduction_scale - flora_reduction_modifier
+            if isinstance(mqueue_result, Exception):
+                raise mqueue_result
             else:
-                mod_reduction = nif_reduction_scale
-
-            launchBlender(output_datadir + out_filename, reduction_scale_arg=mod_reduction)
-            FarNifAutoGen_processNif.postprocessNif(output_datadir + out_filename)
+                out_filename = mqueue_result
+                if "terrain" in out_filename or "rock" in out_filename:
+                    mod_reduction = nif_reduction_scale - terrain_reduction_modifier
+                elif "flora" in out_filename or "tree" in out_filename:
+                    mod_reduction = nif_reduction_scale - flora_reduction_modifier
+                else:
+                    mod_reduction = nif_reduction_scale
+    #            launchBlender(output_datadir + out_filename, reduction_scale_arg=mod_reduction)
+                FarNifAutoGen_processNif.postprocessNif(output_datadir + out_filename)
 
     else:
         #======= Single-threaded processNif() ========
@@ -569,6 +612,7 @@ def main():
                 #... call blender polyreducer
             tempfile_stream = GetInputFileStream(filename)
             if tempfile_stream is not None:
+                keep_border = False
                 if "terrain" in filename or "rock" in filename:
                     mod_threshold = model_radius_threshold * terrain_threshold_multiplier
                     mod_reduction = nif_reduction_scale - terrain_reduction_modifier
@@ -578,12 +622,16 @@ def main():
                 else:
                     mod_threshold = model_radius_threshold
                     mod_reduction = nif_reduction_scale
-                do_output = FarNifAutoGen_processNif.processNifStream(tempfile_stream, filename, radius_threshold_arg=mod_threshold, ref_scale=nif_joblist[filename], input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)                
+                    keep_border = True
+
+                if nif_reduction_scale <= 0.26:
+                    mod_reduction = nif_reduction_scale
+                    
+                do_output = FarNifAutoGen_processNif.processNifStream(tempfile_stream, filename, radius_threshold_arg=mod_threshold, ref_scale=nif_joblist[filename], input_datadir_arg=input_datadir, output_datadir_arg=output_datadir, decimation_ratio=mod_reduction, keep_border=keep_border)
                 tempfile_stream.close()
                 if do_output == 1:
-    #                print " DEBUG: spawn Blender polyreducer"
                     out_filename = filename[:-4] + "_far.nif"
-                    launchBlender(output_datadir + out_filename, reduction_scale_arg=mod_reduction)
+#                    launchBlender(output_datadir + out_filename, reduction_scale_arg=mod_reduction)
     #                raw_input("Press ENTER to continue.")
                 elif do_output == 0:
     #                print "processNIF failed."
