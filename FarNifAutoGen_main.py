@@ -1,7 +1,6 @@
 import os
 
 # custom settings
-#os.environ["BLENDEREXE"] = "C:/Blender/blender.exe"
 #os.environ["FARNIFAUTOGEN_INPUT_DATADIR"] = "C:/Games/bsacmd/out/"
 #os.environ["NIF_JOBLIST_FILE"] = "nif_list_test_vivec_only.job"
 #os.environ["NIF_JOBLIST_FILE"] = "nif_list_morroblivion.job"
@@ -113,17 +112,6 @@ else:
 ##print "DEBUG: output_root = " + output_root
 ##raw_input()
     
-# set up executable path variables
-if (os.environ.get("BLENDEREXE") is not None):
-    blenderPath = os.environ["BLENDEREXE"]
-else:
-    blenderPath = "C:/Program Files (x86)/Blender Foundation/Blender/blender.exe"
-if os.path.exists(blenderPath) == False:
-    print "==================="
-    print "ERROR: Blender was not found. Please set the BLENDEREXE variable to the path of your blender executable."
-    print "==================="
-    raw_input("Press ENTER to quit.")
-    quit(-1)
 if (os.environ.get("GIMPEXE") is not None):
     gimpPath = os.environ["GIMPEXE"]
 else:
@@ -135,8 +123,6 @@ if os.path.exists(gimpPath) == False:
     raw_input("Press ENTER to quit.")
     quit(-1)
 
-# set up helper-file variables
-blenderFilename = "empty.blend"
 
 # set up multiprocessing settings
 try:
@@ -301,27 +287,6 @@ def GetInputFileStream(filename):
     return None
 
 
-# launch blender
-def launchBlender(filename, reduction_scale_arg=0.95):
-    if (reduction_scale_arg >= 1.0):
-        debug_print("Blender PolyReduce(" + filename + "): reduction_scale >= 1.0.  Skipping file...")
-        return -1
-    in_file = filename
-    conversion_script = "FarNifAutoGen_blender_polyreduce.py"
-    ## LOAD BLENDER HERE....
-    print "==================="
-    print "starting blender..." + in_file + ", reduction scale=" + str(reduction_scale_arg)
-    print "==================="
-    #raw_input("DEBUG: PRESS ENTER TO BEGIN")
-    rc = subprocess.call([blenderPath, blenderFilename, "-p", "0", "0", "1", "1", "-P", conversion_script, "--", in_file,"--reduction_scale",str(reduction_scale_arg)])
-    if (rc != 0):
-        print "Unable to launch blender, logging error and skipping file..."
-        # log error and continue
-        error_list(in_file + " (launch error) could not start blender.")
-        return -1
-    else:
-        return 0
-
 # launch gimp
 def launchGIMP(filename, reduction_scale_arg=0.125):
     scriptfile = "FarNifAutoGen_gimp_lowres"
@@ -388,29 +353,8 @@ def perform_job_processNif(args):
     global model_radius_threshold
     global nif_reduction_scale
 
-##    lookup_stream = open(temp_lookup_file, "r")
-##    ref_scale = None
-##    for line in lookup_stream:
-##        if filename in line:
-##            key,ref_scale = line.split(':',1)
-##            break
-##    lookup_stream.close()    
-##    if ref_scale is None:
-##        print "ERROR: Could not parse lookup table! Quitting..."
-##        return
-    
-#    if os.path.exists(input_datadir + filename):
-#        print " file found, calling processNif()..."
-#        do_output = FarNifAutoGen_processNif.processNif(filename, radius_threshold_arg=model_radius_threshold, ref_scale=ref_scale, input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)        
-
     tempfile_stream = GetInputFileStream(filename)
     if tempfile_stream is not None:
-##        if "terrain" in filename or "rock" in filename:
-##            mod_threshold = model_radius_threshold * terrain_threshold_multiplier
-##        elif "flora" in filename or "tree" in filename:
-##            mod_threshold = model_radius_threshold * flora_threshold_multiplier
-##        else:
-##            mod_threshold = model_radius_threshold
 
         keep_border = False
         if "terrain" in filename or "rock" in filename:
@@ -431,18 +375,14 @@ def perform_job_processNif(args):
         tempfile_stream.close()
         #... call blender polyreducer
         if do_output == 1:
-#            debug_print(" DEBUG: spawn Blender polyreducer... (placeholder)")
             debug_print("DEBUG: processNif(" + filename + "): function successful.")
             mqueue.put(filename[:-4] + "_far.nif")
-#            launchBlender(output_datadir + filename[:-4] + "_far.nif", reduction_scale_arg=nif_reduction_scale)
         elif do_output == 0:
             debug_print("processNif(" + filename + "): model radius below autogeneration threshold (" + str(mod_threshold) + "), skipping.")
-#                print "processNIF failed."
         elif do_output == -1:
             debug_print("processNif(" + filename + "): unsupported file.  Skipping.")
     else:
         debug_print("processNif(" + filename + ") ERROR: file not found.")
-#    print "perform_job_processNif() complete. <============== "
 
 
 def perform_job_prepareDDS(filename):
@@ -534,22 +474,10 @@ def main():
         #===== Multi-threaded processNif() =======
         manager = multiprocessing.Manager()
         mqueue = manager.Queue()
-##        lookup_stream = open(temp_lookup_file, "w")
-##        for key, value in nif_joblist.items():
-##            lookup_stream.write('%s:%s\n' % (key, value))
-##        lookup_stream.close()
-        # convert nif_joblist to jobpool
-#        jobpool = list()
-#        for x in nif_joblist.iteritems():
-#            jobpool.append([x, mqueue])
-        # run jobpool
-    #    if jobpool_processNif(jobpool) == -1:
-    #        print "ERROR: jobpool processNif() interrupted."
         print "DEBUG: CPU_COUNT = " + str(CPU_COUNT)
         print "DEBUG: jobpool size = " + str(len(nif_joblist))
         pool = multiprocessing.Pool(processes=CPU_COUNT)
         map_async_result = pool.map_async(perform_job_processNif_safe, [(x, mqueue) for x in nif_joblist.iteritems()])
-#        result = pool.map_async(perform_job_processNif_safe, jobpool)
 
         while not map_async_result.ready() or mqueue.qsize() > 0:
             try:
@@ -569,12 +497,8 @@ def main():
                     mod_reduction = nif_reduction_scale - flora_reduction_modifier
                 else:
                     mod_reduction = nif_reduction_scale
-    #            launchBlender(output_datadir + out_filename, reduction_scale_arg=mod_reduction)
                 FarNifAutoGen_processNif.postprocessNif(output_datadir + out_filename)
-
-#        print "mqueue size = " + str(mqueue.qsize())
-#        raw_input("Parallel mqueue processing stopped. Press enter to continue waiting...")
-
+                
         try:
             map_async_result.wait(timeout=99999999)
             pool.close()
@@ -587,7 +511,6 @@ def main():
                 mqueue_result = mqueue.get_nowait()
             except Queue.Empty:
                 break
-#            print item
 
             if isinstance(mqueue_result, Exception):
                 raise mqueue_result
@@ -599,17 +522,11 @@ def main():
                     mod_reduction = nif_reduction_scale - flora_reduction_modifier
                 else:
                     mod_reduction = nif_reduction_scale
-    #            launchBlender(output_datadir + out_filename, reduction_scale_arg=mod_reduction)
                 FarNifAutoGen_processNif.postprocessNif(output_datadir + out_filename)
 
     else:
         #======= Single-threaded processNif() ========
         for filename in nif_joblist:
-    #        print "processing: " + input_datadir + filename + " ... using ref_scale=" + str(nif_joblist[filename])
-#            if os.path.exists(input_datadir + filename):
-    #           print " file found, calling processNif()..."
-#                do_output = FarNifAutoGen_processNif.processNif(filename, radius_threshold_arg=model_radius_threshold, ref_scale=nif_joblist[filename], input_datadir_arg=input_datadir, output_datadir_arg=output_datadir)
-                #... call blender polyreducer
             tempfile_stream = GetInputFileStream(filename)
             if tempfile_stream is not None:
                 keep_border = False
@@ -631,10 +548,7 @@ def main():
                 tempfile_stream.close()
                 if do_output == 1:
                     out_filename = filename[:-4] + "_far.nif"
-#                    launchBlender(output_datadir + out_filename, reduction_scale_arg=mod_reduction)
-    #                raw_input("Press ENTER to continue.")
                 elif do_output == 0:
-    #                print "processNIF failed."
                     debug_print("processNif(" + filename + "): below autogeneration threshold(" + str(mod_threshold) + ") : skipping polyreduce().")
                 elif do_output == -1:
                     debug_print("processNif(" + filename + "): unsupported file : skipping polyreduce().")                    
