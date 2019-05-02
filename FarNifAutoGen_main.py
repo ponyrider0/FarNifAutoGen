@@ -6,7 +6,7 @@ import os
 #os.environ["NIF_JOBLIST_FILE"] = "nif_list_morroblivion.job"
 #os.environ["NIF_JOBLIST_FILE"] = "nif_list_testing.job"
 #os.environ["DDS_JOBLIST_FILE"] = "lowres_list.job"
-multiprocessing_on = True
+multiprocessing_on = False
 os.environ["PYPROGMESH_HOME"] = "C:/dev/PyProgMesh/"
 
 import sys
@@ -70,7 +70,8 @@ temp_lookup_file = "lookup_table.tmp"
 exclusions_list_file = "exclusions_list.txt"
 terrain_threshold_multiplier = 4.0
 terrain_reduction_modifier = 0.25
-flora_threshold_multiplier = 4.0
+#flora_threshold_multiplier = 4.0
+flora_threshold_multiplier = 1.0
 flora_reduction_modifier = 0.15
 
 # set up input/output path variables
@@ -541,7 +542,7 @@ def main():
                     mod_reduction = nif_reduction_scale
                     keep_border = True
 
-                if nif_reduction_scale <= 0.26:
+                if nif_reduction_scale <= 0.50:
                     mod_reduction = nif_reduction_scale
                     
                 do_output = FarNifAutoGen_processNif.processNifStream(tempfile_stream, filename, radius_threshold_arg=mod_threshold, ref_scale=nif_joblist[filename], input_datadir_arg=input_datadir, output_datadir_arg=output_datadir, decimation_ratio=mod_reduction, keep_border=keep_border)

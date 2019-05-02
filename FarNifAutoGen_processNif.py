@@ -4,6 +4,8 @@ import sys
 import os
 from pyffi.formats.nif import NifFormat
 from pyffi.utils.mathutils import matvecMul
+from pyffi.utils.mathutils import vecscalarMul
+from pyffi.utils.mathutils import matMul
 import pyffi.spells.nif.modify
 import pyffi.spells.nif.fix
 import pyffi.spells.nif.optimize
@@ -107,52 +109,124 @@ def process_NiSourceTexture(block, dds_list, has_alpha=False):
  #   print "leaving process_NiSourceTexture()"   
     return dds_list
 
-def process_NiTriShapeData(block, root0, model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz):
+def process_NiTriShapeData(block, root0, model_minmax_list):
 #    print "process_NiTriShapeData() entered"
+
+    model_minx = model_minmax_list[0]
+    model_miny = model_minmax_list[1]
+    model_minz = model_minmax_list[2]
+    model_maxx = model_minmax_list[3]
+    model_maxy = model_minmax_list[4]
+    model_maxz = model_minmax_list[5]
+
+#    if model_minx is not None:
+#        print "DEBUG: entering values...\nmodel_min: [%2f, %2f, %2f]\nmodel_max: [%2f, %2f, %2f]" % (model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)
+#        raw_input("Press ENTER...")
+
+##    root_chain = root0.find_chain(block)
+##    refnode = None
+##    for node in root_chain:
+##        if isinstance(node, NifFormat.NiNode):
+##            refnode = node
+##    #       print "NiNode found in root chain: " + str(refnode.name)
+##            break
+###        else:
+###            print "no NiNodes found in root chain."
+##    #print "block chain: " + str(root_chain)
+##    if refnode is None:
+##        print "process_NiTriShapeData(): WARNING: could not assign reference node in root chain"
+###        return model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz
+##    else:
+##        parent_node = root_chain[len(root_chain)-2]
+##        if isinstance(parent_node, NifFormat.NiAVObject):
+##            root_transform = root_chain[len(root_chain)-2].get_transform(refnode)
+##        else:
+##            print "process_NiTriShapeData(): parent node does not have transform data, skipping block..."
+##            return [model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz]
+
     root_chain = root0.find_chain(block)
-    refnode = None
+    if not root_chain:
+        raise Exception("ERROR: can't find root_chain")
+    global_matrix = [ [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1] ]
+    # start with identity matrix
     for node in root_chain:
-        if isinstance(node, NifFormat.NiNode):
-            refnode = node
-    #       print "NiNode found in root chain: " + str(refnode.name)
-            break
-#        else:
-#            print "no NiNodes found in root chain."
-    #print "block chain: " + str(root_chain)
-    if refnode is None:
-        print "process_NiTriShapeData(): WARNING: could not assign reference node in root chain"
-#        return model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz
-    else:
-        parent_node = root_chain[len(root_chain)-2]
-        if isinstance(parent_node, NifFormat.NiAVObject):
-            root_transform = root_chain[len(root_chain)-2].get_transform(refnode)
-        else:
-            print "process_NiTriShapeData(): parent node does not have transform data, skipping block..."
-            return model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz
+        if not isinstance(node, NifFormat.NiAVObject):
+            continue
+        rotation_matrix = [ [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1] ]
+        for i in range(3):
+            for j in range(3):
+                rotation_matrix[i][j] = node.rotation.as_list()[j][i]
+        scale_matrix = [ [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1] ]
+        for i in range(3):
+            scale_matrix[i][i] = node.scale
+        translation_matrix = [ [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1] ]
+        for i in range(3):
+            translation_matrix[i][3] = node.translation.as_list()[i]
+        global_matrix = matMul(scale_matrix, global_matrix)
+        global_matrix = matMul(rotation_matrix, global_matrix)
+        global_matrix = matMul(translation_matrix, global_matrix)
+        
+##        local_matrix = [ [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1] ]
+##        for i in range(3):
+##            for j in range(3):
+##                local_matrix[i][j] = node.rotation.as_list()[i][j] * node.scale
+##        for i in range(3):
+##            local_matrix[i][3] = node.translation.as_list()[i]
+##        # mulitply with root_matrix
+##        global_matrix = matMul(global_matrix, local_matrix)        
 
     #print root_transform
-    block_maxx = block_minx = block.vertices[0].x
-    block_maxy = block_miny = block.vertices[0].y
-    block_maxz = block_minz = block.vertices[0].z
-    for v in block.vertices:
-        block_maxx = max(block_maxx, v.x)
-        block_maxy = max(block_maxy, v.y)
-        block_maxz = max(block_maxz, v.z)
-        block_minx = min(block_minx, v.x)
-        block_miny = min(block_miny, v.y)
-        block_minz = min(block_minz, v.z)
-    # transform coordinates to global model space
-    minvec = [block_minx, block_miny, block_minz, 1]
-    maxvec = [block_maxx, block_maxy, block_maxz, 1]
-    if refnode is not None:
-        minvec = matvecMul(root_transform.as_list(), minvec)
-        maxvec = matvecMul(root_transform.as_list(), maxvec)
-    block_minx = minvec[0]
-    block_miny = minvec[1]
-    block_minz = minvec[2]
-    block_maxx = maxvec[0]
-    block_maxy = maxvec[1]
-    block_maxz = maxvec[2]
+#    print "DEBUG: transform matrix:\n %s" % (str(root_transform.get_inverse()))
+##    print "global matrix = "
+##    for i in range(4):
+##        print "[ %2f, %2f, %2f, %2f ]" % (global_matrix[i][0], global_matrix[i][1], global_matrix[i][2], global_matrix[i][3])
+##    raw_input("Press ENTER...")
+
+    vert = block.vertices[0]
+    v = matvecMul(global_matrix, [vert.x, vert.y, vert.z, 1.0])
+    block_maxx = v[0]
+    block_minx = v[0]
+    block_maxy = v[1]
+    block_miny = v[1]
+    block_maxz = v[2]
+    block_minz = v[2]
+    for vert in block.vertices:
+        v = matvecMul(global_matrix, [vert.x, vert.y, vert.z, 1.0])        
+        block_maxx = max(block_maxx, v[0])
+        block_maxy = max(block_maxy, v[1])
+        block_maxz = max(block_maxz, v[2])
+        block_minx = min(block_minx, v[0])
+        block_miny = min(block_miny, v[1])
+        block_minz = min(block_minz, v[2])
+
+##    # transform coordinates to global model space
+##    minvec = [block_minx, block_miny, block_minz, 1.0]
+##    maxvec = [block_maxx, block_maxy, block_maxz, 1.0]
+##    if refnode is not None:
+##        print "DEBUG: multiplying bounds by transformation matrix"
+##        minvec = matvecMul(root_transform.as_list(), minvec)
+##        maxvec = matvecMul(root_transform.as_list(), maxvec)
+##    if global_matrix is not None:
+##        print "DEBUG: multiplying bounds by transformation matrix"
+##        minvec = matvecMul(global_matrix, minvec)
+##        maxvec = matvecMul(global_matrix, maxvec)
+
+##    if (abs(minvec[3]-1.0) > 0.001) or (abs(maxvec[3]-1.0) > 0.001):
+##        raise Exception("Scale of min/max vector is not 1, after matrix multiply by transform")
+##        print "Dividing min/max vector by scale: %f, %f ..." % (minvec[3], maxvec[3])
+##        minvec = vecscalarMul(minvec, 1/minvec[3])
+##        maxvec = vecscalarMul(maxvec, 1/maxvec[3])
+##        if (abs(minvec[3]-1) > 0.001) or (abs(maxvec[3]-1) > 0.001):
+##            raise Exception("Scale of min/max vector is not 1, after matrix multiply by transform")
+            
+##    print "DEBUG: min/max block vectors:\nblock_minvec: %s\nblock_maxvec: %s" % (str(minvec), str(maxvec))
+##    block_minx = minvec[0]
+##    block_miny = minvec[1]
+##    block_minz = minvec[2]
+##    block_maxx = maxvec[0]
+##    block_maxy = maxvec[1]
+##    block_maxz = maxvec[2]
+    
     # update model min/max values
     if (model_minx is None):
         #initialize model min/max
@@ -170,10 +244,20 @@ def process_NiTriShapeData(block, root0, model_minx, model_miny, model_minz, mod
         model_maxy = max(model_maxy, block_maxy)
         model_maxz = max(model_maxz, block_maxz)
 #    print "leaving process_NiTriShapeData()"
-    return model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz
+#    print "DEBUG: exiting values...\nmodel_min: [%2f, %2f, %2f]\nmodel_max: [%2f, %2f, %2f]" % (model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)
+#    raw_input("Press ENTER...")
 
-def calc_model_minmax(model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz):
+    return [model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz]
+
+def calc_model_radius_from_minmax(model_minmax_list):
 #    print "calc_model_minmax() entered"
+    model_minx = model_minmax_list[0]
+    model_miny = model_minmax_list[1]
+    model_minz = model_minmax_list[2]
+    model_maxx = model_minmax_list[3]
+    model_maxy = model_minmax_list[4]
+    model_maxz = model_minmax_list[5]
+    
     dx = abs(model_maxx - model_minx)
     dx2 = dx*dx
     dy = abs(model_maxy - model_miny)
@@ -272,12 +356,15 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
     model_has_alpha_prop = False
 #    dds_list = list()
     dds_list = dict()
-    model_minx = None
-    model_miny = None
-    model_minz = None
-    model_maxx = None
-    model_maxy = None
-    model_maxz = None
+
+##    model_minx = None
+##    model_miny = None
+##    model_minz = None
+##    model_maxx = None
+##    model_maxy = None
+##    model_maxz = None
+    model_minmax_list = [None, None, None, None, None, None]
+
     model_radius = None
     block_count = None
     root0 = None
@@ -305,9 +392,11 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
     nifdata = cull_nifdata(nifdata)
     index_counter = -1
     root0 = nifdata.roots[0]
+    current_transform = None
     for root in nifdata.roots:
         index_counter = index_counter + 1
         root_count = index_counter
+        current_transform = root.get_transform()
         for block in root.tree():
             index_counter = index_counter + 1
             block_count = index_counter
@@ -365,17 +454,20 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
                 # 2. then process any texture properties
                 for sourcetexture in sourcetextures_list:
                     if sourcetexture is not None:
-                        dds_list = process_NiSourceTexture(sourcetexture, dds_list, block_has_alpha_prop)
+                        do_nothing = True
+#                        dds_list = process_NiSourceTexture(sourcetexture, dds_list, block_has_alpha_prop)
                 # 3. now add alpha property if not preset
                 if block_has_alpha_prop is False:
                     block.add_property(alphablock)
                 # check for VertexData, calculate model_min/max if present
                 if block.data is not None:
-                    model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz = process_NiTriShapeData(block.data, root0, model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)
+#                    model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz = process_NiTriShapeData(block.data, root0, model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)
+                    model_minmax_list = process_NiTriShapeData(block.data, root0, model_minmax_list)
                     block_decimation_list.append(block)
-    if (model_minx is not None):
+
+    if (model_minmax_list[0] is not None):
 #        print "calling calc_model_minmax()"
-        model_radius = calc_model_minmax(model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)      
+        model_radius = calc_model_radius_from_minmax(model_minmax_list)
 
     ref_scale = float(ref_scale)
     radius_threshold_arg = float(radius_threshold_arg)
@@ -388,21 +480,30 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
     pyffi.spells.nif.optimize.SpellCleanRefLists(data=nifdata).recurse()
     
     # if radius too small, skip
-#    print "DEBUG: radius=" + str(model_radius) + ", ref_scale=" + str(ref_scale)
+    print "DEBUG: radius=" + str(model_radius) + ", ref_scale=" + str(ref_scale)
     if (model_radius is None):
 #        print "ERROR: no model_radius calculated, unsupported NIF file."
         do_output = -1
     elif (model_radius * ref_scale) < radius_threshold_arg:
-#        print "DEBUG: model radius under threshold for [" + input_filename + "]"
+        print "DEBUG: model radius under threshold for [" + input_filename + "]"
         do_output = 0
     else:
         #output file....
         do_output = 1
 
-        # decimate blocks
-        for block in block_decimation_list:
-            print "DEBUG: Decimating file[%s] block[#%s]..." % (input_filename, block.name)
-            PMBlock(block.data, decimation_ratio, keep_border)
+    do_output = 1
+    if do_output == 1:
+#        if "tree" in input_filename:
+        if True:
+            do_nothing = True
+            newroot = NifFormat.NiNode()
+            nifdata.roots.append(newroot)
+            BillboardAutoGen(input_filename, newroot, model_minmax_list, alphablock)
+        else:
+            # decimate blocks (NiTriShape(Data) and NiTriStrips(Data) 
+            for block in block_decimation_list:
+                print "DEBUG: Decimating file[%s] block[#%s]..." % (input_filename, block.name)
+                PMBlock(block.data, decimation_ratio, keep_border)
         
 #        print "calling optimize_nifdata(nifdata)"
         nifdata = optimize_nifdata(nifdata)
@@ -416,6 +517,136 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
 #    print "processNIF(): complete."
     return do_output
 
+
+def makeTriShape(verts, triangles, normals=None, uv_set=None, texture_name=None, alphablock=None):
+    # Make NiTriShape Node
+    shape = NifFormat.NiTriShape()
+    # Add NiTriShapeData Node
+    shape_data = NifFormat.NiTriShapeData()
+    shape.data = shape_data
+    shape_data.num_vertices = len(verts)
+    shape_data.has_vertices = True
+    shape_data.vertices.update_size()
+    for i, v in enumerate(shape_data.vertices):
+        v.x = verts[i][0]
+        v.y = verts[i][1]
+        v.z = verts[i][2]
+    shape_data.update_center_radius()
+    shape_data.num_triangles = len(triangles)
+    shape_data.triangles.update_size()
+    shape_data.set_triangles(triangles)
+    if uv_set is not None:
+        shape_data.num_uv_sets = 1
+        shape_data.has_uv = True
+        shape_data.uv_sets.update_size()
+        for i,v in enumerate(shape_data.uv_sets[0]):
+            v.u = uv_set[i][0]
+            v.v = uv_set[i][1]
+    if normals is not None:
+        shape_data.has_normals = True
+        shape_data.normals.update_size()
+        for i, v in enumerate(shape_data.normals):
+            v.x = normals[i][0]
+            v.y = normals[i][1]
+            v.z = normals[i][2]
+    # Use existing? NiAlphaProperty
+    if alphablock is not None:
+        shape.add_property(alphablock)
+
+    # Add NiTexturingProperty
+    if texture_name is not None:
+        textureprop = NifFormat.NiTexturingProperty()
+        # Add Placeholder NiSourceTexture
+        source = NifFormat.NiSourceTexture()
+        source.use_external = 1
+        source.file_name = texture_name
+        textureprop.has_base_texture = True
+        textureprop.base_texture.source = source
+        shape.add_property(textureprop)
+
+    return shape
+
+def BillboardAutoGen(input_filename, root0, model_minmax_list, alphablock, trunk_center=[0,0]):
+    model_minx = model_minmax_list[0]
+    model_miny = model_minmax_list[1]
+    model_minz = model_minmax_list[2]
+    model_maxx = model_minmax_list[3]
+    model_maxy = model_minmax_list[4]
+    model_maxz = model_minmax_list[5]
+
+    # Billboard A: X-Z Plane, Y=0
+    VertsA = []
+    #front
+    VertsA.append( [model_minx, trunk_center[1], model_minz])
+    VertsA.append( [model_maxx, trunk_center[1], model_minz])
+    VertsA.append( [model_maxx, trunk_center[1], model_maxz])
+    VertsA.append( [model_minx, trunk_center[1], model_maxz])
+    #back (for use with reversed normals)
+    VertsA.append( [model_minx, trunk_center[1], model_minz])
+    VertsA.append( [model_maxx, trunk_center[1], model_minz])
+    VertsA.append( [model_maxx, trunk_center[1], model_maxz])
+    VertsA.append( [model_minx, trunk_center[1], model_maxz])
+
+    TrianglesA = []
+    TrianglesA.append( [0, 1, 2]) # front
+    TrianglesA.append( [0, 2, 3] )# front
+    TrianglesA.append( [4, 6, 5]) # back
+    TrianglesA.append( [4, 7, 6] )# back
+#    Normalset = []
+    normals = []
+    #front
+    normals.append([0, -1, 0])
+    normals.append([0, -1, 0])
+    normals.append([0, -1, 0])
+    normals.append( [0, -1, 0])
+    #back
+    normals.append([0, 1, 0])
+    normals.append([0, 1, 0])
+    normals.append([0, 1, 0])
+    normals.append( [0, 1, 0])
+#    UVset = []
+    uv_set = []
+    #front
+    uv_set.append([0, 0])
+    uv_set.append([-1, 0])
+    uv_set.append([-1, 1])
+    uv_set.append([0, 1])
+    #back
+    uv_set.append([0, 0])
+    uv_set.append([1, 0])
+    uv_set.append([1, 1])
+    uv_set.append([0, 1])
+
+    texture_name = input_filename.lower().replace("\\", "/").replace(".nif", "_billboard_front.dds").replace("meshes/", "textures/lowres/")
+    shape = makeTriShape(VertsA, TrianglesA, normals, uv_set, texture_name, alphablock)
+    root0.add_child(shape)
+    
+    # Billboard B: Y-Z Plane, X=0
+    VertsB = []
+    VertsB.append([trunk_center[0], model_miny, model_minz])
+    VertsB.append([trunk_center[0], model_maxy, model_minz])
+    VertsB.append([trunk_center[0], model_maxy, model_maxz])
+    VertsB.append([trunk_center[0], model_miny, model_maxz])
+    VertsB.append([trunk_center[0], model_miny, model_minz])
+    VertsB.append([trunk_center[0], model_maxy, model_minz])
+    VertsB.append([trunk_center[0], model_maxy, model_maxz])
+    VertsB.append([trunk_center[0], model_miny, model_maxz])
+    # Reuse Triangles
+#    Normalset = []
+    normals[0] = [1, 0, 0]
+    normals[1] = [1, 0, 0]
+    normals[2] = [1, 0, 0]
+    normals[3] = [1, 0, 0]
+    normals[4] = [-1, 0, 0]
+    normals[5] = [-1, 0, 0]
+    normals[6] = [-1, 0, 0]
+    normals[7] = [-1, 0, 0]
+#    UVset = []
+    # Reuse UVset
+
+    texture_name = texture_name.replace("_billboard_front.dds", "_billboard_back.dds")
+    shape = makeTriShape(VertsB, TrianglesA, normals, uv_set, texture_name, alphablock)
+    root0.add_child(shape)
 
 def PMBlock(block, decimation_ratio, keep_border=False):
 #    print "========================NEW BLOCK========================="
