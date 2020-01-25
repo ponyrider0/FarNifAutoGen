@@ -718,7 +718,7 @@ def render_triangle_block_data(block, root, use_strips, fbo, mesh_cache, ddsText
     if block.has_vertices is False:
         return
 
-# raw draw
+    # prep draw to texture
     glBindFramebuffer(GL_FRAMEBUFFER, fbo)
     glBindTexture(GL_TEXTURE_2D, ddsTexture)
 
@@ -735,7 +735,7 @@ def render_triangle_block_data(block, root, use_strips, fbo, mesh_cache, ddsText
     #side: rotate 90 around X, rotate 90 around Z
     if RenderView is "side":
         glRotatef(90, -1, 0, 0)
-        glRotatef(90, 0, 0, 1)
+        glRotatef(90, 0, 0, -1)
 
     root_chain = root.find_chain(block)
     if not root_chain:
@@ -744,6 +744,8 @@ def render_triangle_block_data(block, root, use_strips, fbo, mesh_cache, ddsText
         if not isinstance(node, NifFormat.NiAVObject):
             continue
         node_matrix = node.get_transform().as_list()
+#        print "node_matrix: "
+#        print node_matrix
         glMultMatrixf(node_matrix)
 
     has_uv = False
@@ -812,7 +814,7 @@ def render_root_tree(root, RenderView, fbo, mesh_cache, texture_cache, input_dat
 ##            glRotatef(90, 0, 0, 1)
 
         if isinstance(block, NifFormat.NiTriShape) or isinstance(block, NifFormat.NiTriStrips):
-            print "Loading Tri-Node: " + block.name
+#            print "Loading Tri-Node: " + block.name
             block_has_alpha_prop = False
             sourcetextures_list = list()
             # 1. check for alpha property first
@@ -863,18 +865,30 @@ def render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, i
 
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
-    # topview: left -X, right +X, bottom -Z, top +Z, near +Y, far -Y
-    # aka: min_x, max_x, min_z, max_z, max_y, min_y
+##    # topview: left -X, right +X, bottom -Z, top +Z, near +Y, far -Y
+##    # aka: min_x, max_x, min_z, max_z, max_y, min_y
+##    if RenderView is "top":
+##        glOrtho(model_minx, model_maxx, model_minz, model_maxz, model_maxy, model_miny)
+##    # frontview: -X, +X, -Y, +Y, -Z, +Z
+##    # aka: min_x, max_x, min_y, max_y, min_z, max_z
+##    if RenderView is "front":
+##        glOrtho(model_minx, model_maxx, model_miny, model_maxy, model_minz, model_maxz)
+##    # sideview: +Z, -Z, -Y, +Y, -X, +X
+##    # aka: max_z, min_z, min_y max_y, min_x, max_x
+##    if RenderView is "side":
+##        glOrtho(model_maxz, model_minz, model_miny, model_maxy, model_minx, model_maxx)
+
+#    glOrtho(model_minx, model_maxx, model_miny, model_maxy, model_minz, model_maxz)
+#    # top projection
     if RenderView is "top":
-        glOrtho(model_minx, model_maxx, model_minz, model_maxz, model_maxy, model_miny)
-    # frontview: -X, +X, -Y, +Y, -Z, +Z
-    # aka: min_x, max_x, min_y, max_y, min_z, max_z
+        glOrtho(model_minx, model_maxx, model_miny, model_maxy, model_minz-1000, model_maxz+1000)
+
+    # front projection
     if RenderView is "front":
-        glOrtho(model_minx, model_maxx, model_miny, model_maxy, model_minz, model_maxz)
-    # sideview: +Z, -Z, -Y, +Y, -X, +X
-    # aka: max_z, min_z, min_y max_y, min_x, max_x
+        glOrtho(model_minx, model_maxx, model_minz, model_maxz, model_maxy+1000, model_miny-1000)
+
     if RenderView is "side":
-        glOrtho(model_maxz, model_minz, model_miny, model_maxy, model_minx, model_maxx)
+        glOrtho(model_miny, model_maxy, model_minz, model_maxz, model_minx, model_maxx)
 
     # step through all nodes...
 #    root0 = nifdata.roots[0]
@@ -946,7 +960,7 @@ def save_fbo_to_file(texture_name, fbo, fbo2, rgb_texture2, depth_texture2, outp
             os.makedirs(folderPath)
     except:
         debug_print("processNif() ERROR: could not create destination directory: " + str(folderPath))
-    print "outputing: " + texture_name
+#    print "outputing: " + texture_name
 
     fostream = open(output_filename_path, "wb")
     rgb_dds.write(fostream)
