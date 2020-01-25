@@ -132,7 +132,7 @@ def GetInputFileStream(filename):
                 for file_block in folder_block.files:
                     bsa_filepath = folder_block.name + "/" + file_block.name
                     bsa_filepath = os.path.normpath(bsa_filepath).replace("\\","/").lower()
-                    if bsa_filepath == filename:
+                    if bsa_filepath == filename.replace("\\","/").lower():
                         # get stream to filepath
                         file_offset = file_block.offset
                         file_size = file_block.file_size.num_bytes
