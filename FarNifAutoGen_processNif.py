@@ -468,11 +468,17 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
     if do_output == 1:
 #        if "tree" in input_filename:
         if True:
-            render_Billboard_textures(nifdata, model_minmax_list, input_filename, input_datadir_arg, output_datadir_arg)
-            
+            render_Billboard_textures(nifdata, model_minmax_list, input_filename, input_datadir_arg, output_datadir_arg)            
             newroot = NifFormat.NiNode()
-            nifdata.roots.append(newroot)
+            newroot.name = "Scene Root"
+#            nifdata.roots.append(newroot)
             BillboardAutoGen(input_filename, newroot, model_minmax_list, alphablock)
+
+            # create new nifdata stream and write to output file ....
+            new_nifdata = NifFormat.Data(version=0x14000005, user_version=10)
+            new_nifdata.roots = [newroot]
+            output_niffile(new_nifdata, input_filename, output_datadir_arg)
+            
         else:
             # decimate blocks (NiTriShape(Data) and NiTriStrips(Data) 
             for block in block_decimation_list:
@@ -482,7 +488,7 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
 #        print "calling optimize_nifdata(nifdata)"
         nifdata = optimize_nifdata(nifdata)
 #        print "calling output_niffile(nifdata, input_filename, output_datadir)"
-        output_niffile(nifdata, input_filename, output_datadir_arg)
+#        output_niffile(nifdata, input_filename, output_datadir_arg)
 #        print "calling output_ddslist(dds_list)"
         output_ddslist(dds_list, output_root)
         
