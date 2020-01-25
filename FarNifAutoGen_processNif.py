@@ -856,6 +856,13 @@ def render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, i
     model_maxx = model_minmax_list[3]
     model_maxy = model_minmax_list[4]
     model_maxz = model_minmax_list[5]
+
+    if model_minx == model_maxx:
+        model_maxx += 1
+    if model_miny == model_maxy:
+        model_maxy += 1
+    if model_minz == model_maxz:
+        model_maxz += 1
     
     # prepare for rendering...
     glBindFramebuffer(GL_FRAMEBUFFER, fbo)
