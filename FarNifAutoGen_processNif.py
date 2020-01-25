@@ -360,7 +360,9 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
 #    print "load_nif(input_filename)"
 #    nifdata = load_nif(input_datadir_arg + input_filename)
     nifdata = load_nifstream(input_stream)
-    nifdata = cull_nifdata(nifdata)
+
+#    nifdata = cull_nifdata(nifdata)
+
     index_counter = -1
 #    root0 = nifdata.roots[0]
 #    current_transform = None
@@ -443,11 +445,12 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
     radius_threshold_arg = float(radius_threshold_arg)
 
 #    nifdata = cull_nifdata(nifdata)
-    if UVController_workaround is True:
-        SpellDelTextures(data=nifdata).recurse()
 
-    pyffi.spells.nif.modify.SpellDelAnimation(data=nifdata).recurse()
-    pyffi.spells.nif.optimize.SpellCleanRefLists(data=nifdata).recurse()
+#    if UVController_workaround is True:
+#        SpellDelTextures(data=nifdata).recurse()
+
+#    pyffi.spells.nif.modify.SpellDelAnimation(data=nifdata).recurse()
+#    pyffi.spells.nif.optimize.SpellCleanRefLists(data=nifdata).recurse()
     
     # if radius too small, skip
     print "DEBUG: radius=" + str(model_radius) + ", ref_scale=" + str(ref_scale)
