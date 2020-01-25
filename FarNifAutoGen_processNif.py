@@ -990,13 +990,20 @@ def render_Billboard_textures(nifdata, model_minmax_list, input_filename, input_
     RenderView = "top"
     texture_cache = dict()
     mesh_cache = dict()
-    
-    # initialize glut, opengl
-    glutInit()
-    glutInitDisplayMode(GLUT_RGBA | GLUT_MULTISAMPLE)
-    glutInitWindowSize(window_width, window_height)
-    glutInitWindowPosition(0,0)
-    window = glutCreateWindow("Billboard Texture Preview")
+
+    doInit = False    
+    # initialize glut, opengl ONLY IF NEEDED...
+    try:
+        glEnable(GL_TEXTURE_2D)
+    except:
+        doInit = True
+
+    if doInit:
+        glutInit()
+        glutInitDisplayMode(GLUT_RGBA | GLUT_MULTISAMPLE)
+        glutInitWindowSize(window_width, window_height)
+        glutInitWindowPosition(0,0)
+        window = glutCreateWindow("Billboard Texture Preview")
 
     fbo = fbo_init()
     fbo2, rgb_texture2, depth_texture2 = fbo2_init()
