@@ -17,9 +17,9 @@ from pyffi.utils.tristrip import stripify
 
 import FarNifAutoGen_utils
 
-Use_GL_MultiSample = True
+Use_GL_MultiSample = False
 SIDE = 1024
-MultiSampleRate = 8
+MultiSampleRate = 1
 window_width = 128
 window_height = 128
 
