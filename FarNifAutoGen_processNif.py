@@ -6,6 +6,7 @@ from pyffi.formats.nif import NifFormat
 from pyffi.utils.mathutils import matvecMul
 from pyffi.utils.mathutils import vecscalarMul
 from pyffi.utils.mathutils import matMul
+from pyffi.utils.mathutils import matTransposed
 import pyffi.spells.nif.modify
 import pyffi.spells.nif.fix
 import pyffi.spells.nif.optimize
@@ -13,6 +14,14 @@ import pyffi.spells.nif
 
 from pyffi.utils.tristrip import triangulate
 from pyffi.utils.tristrip import stripify
+
+import FarNifAutoGen_utils
+
+Use_GL_MultiSample = True
+SIDE = 1024
+MultiSampleRate = 8
+window_width = 128
+window_height = 128
 
 # PyProgMesh Path
 if (os.environ.get("PYPROGMESH_HOME") is not None):
@@ -109,7 +118,8 @@ def process_NiSourceTexture(block, dds_list, has_alpha=False):
  #   print "leaving process_NiSourceTexture()"   
     return dds_list
 
-def process_NiTriShapeData(block, root0, model_minmax_list):
+
+def process_NiTriShapeData(block, root, model_minmax_list):
 #    print "process_NiTriShapeData() entered"
 
     model_minx = model_minmax_list[0]
@@ -119,71 +129,72 @@ def process_NiTriShapeData(block, root0, model_minmax_list):
     model_maxy = model_minmax_list[4]
     model_maxz = model_minmax_list[5]
 
-#    if model_minx is not None:
-#        print "DEBUG: entering values...\nmodel_min: [%2f, %2f, %2f]\nmodel_max: [%2f, %2f, %2f]" % (model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)
-#        raw_input("Press ENTER...")
+##    root_chain = root.find_chain(block)
+##    if not root_chain:
+##        raise Exception("ERROR: can't find root_chain")
+##    identity_matrix = [ [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1] ]
+####    correction_matrix = [[ 1.000000e+00,  0.000000e+00, -0.000000e+00,  0.000000e+00],
+####                         [-0.000000e+00, -8.742278e-08, -1.000000e+00,  0.000000e+00],
+####                         [ 0.000000e+00,  1.000000e+00, -8.742278e-08,  0.000000e+00],
+####                         [ 0.000000e+00,  0.000000e+00,  0.000000e+00,  1.000000e+00]]
+##    # compose in row-major for convenience
+##    correction_matrix = [ [1, 0, 0, 0],
+##                          [0, 1, 0, 0],
+##                          [0, 0, 1, 0],
+##                          [0, 0, 0, 1] ]
+##    # convert to column-major for operations
+##    correction_matrix = matTransposed(correction_matrix)
+##    global_matrix = correction_matrix
+##    # start with identity matrix
+##    for node in reversed(root_chain[1:-1]):
+##        if not isinstance(node, NifFormat.NiAVObject):
+##            continue
+##        local_matrix = node.get_transform().as_list()
+##        global_matrix = matMul(local_matrix, global_matrix)
+###        global_matrix = matMul(global_matrix, local_matrix)
 
-##    root_chain = root0.find_chain(block)
-##    refnode = None
-##    for node in root_chain:
-##        if isinstance(node, NifFormat.NiNode):
-##            refnode = node
-##    #       print "NiNode found in root chain: " + str(refnode.name)
-##            break
-###        else:
-###            print "no NiNodes found in root chain."
-##    #print "block chain: " + str(root_chain)
-##    if refnode is None:
-##        print "process_NiTriShapeData(): WARNING: could not assign reference node in root chain"
-###        return model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz
-##    else:
-##        parent_node = root_chain[len(root_chain)-2]
-##        if isinstance(parent_node, NifFormat.NiAVObject):
-##            root_transform = root_chain[len(root_chain)-2].get_transform(refnode)
-##        else:
-##            print "process_NiTriShapeData(): parent node does not have transform data, skipping block..."
-##            return [model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz]
-
-    root_chain = root0.find_chain(block)
+    root_chain = root.find_chain(block)
     if not root_chain:
         raise Exception("ERROR: can't find root_chain")
-    global_matrix = [ [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1] ]
+    identity_matrix = [ [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1] ]
+    global_matrix = identity_matrix
     # start with identity matrix
     for node in root_chain:
         if not isinstance(node, NifFormat.NiAVObject):
             continue
-        rotation_matrix = [ [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1] ]
-        for i in range(3):
-            for j in range(3):
-                rotation_matrix[i][j] = node.rotation.as_list()[j][i]
-        scale_matrix = [ [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1] ]
-        for i in range(3):
-            scale_matrix[i][i] = node.scale
-        translation_matrix = [ [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1] ]
-        for i in range(3):
-            translation_matrix[i][3] = node.translation.as_list()[i]
-        global_matrix = matMul(scale_matrix, global_matrix)
-        global_matrix = matMul(rotation_matrix, global_matrix)
-        global_matrix = matMul(translation_matrix, global_matrix)
-        
-##        local_matrix = [ [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1] ]
-##        for i in range(3):
-##            for j in range(3):
-##                local_matrix[i][j] = node.rotation.as_list()[i][j] * node.scale
-##        for i in range(3):
-##            local_matrix[i][3] = node.translation.as_list()[i]
-##        # mulitply with root_matrix
-##        global_matrix = matMul(global_matrix, local_matrix)        
+        local_matrix = node.get_transform()
+#        print "Node.name: " + node.name
+#        print local_matrix
+        global_matrix = matMul(global_matrix, local_matrix.as_list())
 
-    #print root_transform
-#    print "DEBUG: transform matrix:\n %s" % (str(root_transform.get_inverse()))
-##    print "global matrix = "
-##    for i in range(4):
-##        print "[ %2f, %2f, %2f, %2f ]" % (global_matrix[i][0], global_matrix[i][1], global_matrix[i][2], global_matrix[i][3])
-##    raw_input("Press ENTER...")
+##    print "\ntransposed matrix: "
+##    trans_matrix = matTransposed(global_matrix)
+##    for matrix_col in xrange(4):
+##        print trans_matrix[matrix_col]
+###    raw_input("Press ENTER")
+##
+##    print "\nglobal matrix: "
+##    for matrix_col in xrange(4):
+##        print global_matrix[matrix_col]
+##
+##    test_vert = [1, 1, 1, 1]
+##    print "\n\nTEST VERT:"
+##    print test_vert
+##    transformed_vert = matvecMul(matTransposed(global_matrix), test_vert)
+##    print "\n\nTRANSFORMED VERT:"
+##    print transformed_vert
+##    exit(-1)
+
+    # FIX BUG IN MATVECMUL
+    global_matrix = matTransposed(global_matrix)
 
     vert = block.vertices[0]
+#    print "pre-transform"
+#    print vert
     v = matvecMul(global_matrix, [vert.x, vert.y, vert.z, 1.0])
+#    print "\npost-transform"
+#    print v
+#    exit(-1)
     block_maxx = v[0]
     block_minx = v[0]
     block_maxy = v[1]
@@ -194,38 +205,10 @@ def process_NiTriShapeData(block, root0, model_minmax_list):
         v = matvecMul(global_matrix, [vert.x, vert.y, vert.z, 1.0])        
         block_maxx = max(block_maxx, v[0])
         block_maxy = max(block_maxy, v[1])
-        block_maxz = max(block_maxz, v[2])
+        block_maxz = max(block_maxz, v[2])        
         block_minx = min(block_minx, v[0])
         block_miny = min(block_miny, v[1])
         block_minz = min(block_minz, v[2])
-
-##    # transform coordinates to global model space
-##    minvec = [block_minx, block_miny, block_minz, 1.0]
-##    maxvec = [block_maxx, block_maxy, block_maxz, 1.0]
-##    if refnode is not None:
-##        print "DEBUG: multiplying bounds by transformation matrix"
-##        minvec = matvecMul(root_transform.as_list(), minvec)
-##        maxvec = matvecMul(root_transform.as_list(), maxvec)
-##    if global_matrix is not None:
-##        print "DEBUG: multiplying bounds by transformation matrix"
-##        minvec = matvecMul(global_matrix, minvec)
-##        maxvec = matvecMul(global_matrix, maxvec)
-
-##    if (abs(minvec[3]-1.0) > 0.001) or (abs(maxvec[3]-1.0) > 0.001):
-##        raise Exception("Scale of min/max vector is not 1, after matrix multiply by transform")
-##        print "Dividing min/max vector by scale: %f, %f ..." % (minvec[3], maxvec[3])
-##        minvec = vecscalarMul(minvec, 1/minvec[3])
-##        maxvec = vecscalarMul(maxvec, 1/maxvec[3])
-##        if (abs(minvec[3]-1) > 0.001) or (abs(maxvec[3]-1) > 0.001):
-##            raise Exception("Scale of min/max vector is not 1, after matrix multiply by transform")
-            
-##    print "DEBUG: min/max block vectors:\nblock_minvec: %s\nblock_maxvec: %s" % (str(minvec), str(maxvec))
-##    block_minx = minvec[0]
-##    block_miny = minvec[1]
-##    block_minz = minvec[2]
-##    block_maxx = maxvec[0]
-##    block_maxy = maxvec[1]
-##    block_maxz = maxvec[2]
     
     # update model min/max values
     if (model_minx is None):
@@ -243,9 +226,6 @@ def process_NiTriShapeData(block, root0, model_minmax_list):
         model_maxx = max(model_maxx, block_maxx)
         model_maxy = max(model_maxy, block_maxy)
         model_maxz = max(model_maxz, block_maxz)
-#    print "leaving process_NiTriShapeData()"
-#    print "DEBUG: exiting values...\nmodel_min: [%2f, %2f, %2f]\nmodel_max: [%2f, %2f, %2f]" % (model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)
-#    raw_input("Press ENTER...")
 
     return [model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz]
 
@@ -293,13 +273,10 @@ def optimize_nifdata(x):
     return x
     
 def output_niffile(nifdata, input_filename, output_datadir):
-#    print "output_niffile() entered"
     #compose output filename
     #output postfix to filename
     output_filename = input_filename[:-4] + "_far.nif"
     output_filename_path = output_datadir + output_filename
-#    print "output local path: " + output_filename
-#    print "output file path: " + output_filename_path
     folderPath = os.path.dirname(output_filename_path)
     try:
         if os.path.exists(folderPath) == False:
@@ -314,9 +291,8 @@ def output_niffile(nifdata, input_filename, output_datadir):
 #    print "leaving output_niffile()"
     return output_filename_path
 
+
 def output_ddslist(dds_list, output_root):
-#    print "output_ddslist() entered"
-#    print "texture list: " + str(dds_list)
     #rename and copy textures to output stem...
     lowres_list_filename = "lowres_list.job"
     ostream = open(output_root + lowres_list_filename, "a")
@@ -328,6 +304,7 @@ def output_ddslist(dds_list, output_root):
         ostream.write(filename + "," + alpha_tag + "\n")
     ostream.close()
 #    print "leaving output_ddslist()"
+
 
 def postprocessNif(filename):
 #    pyffilogger, loghandler = init_logger()
@@ -344,11 +321,11 @@ def postprocessNif(filename):
     print "PostProcessing(" + filename + ") complete."
     
 
-def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0), input_datadir_arg=None, output_datadir_arg=None, decimation_ratio=0.8):
-    input_stream = open(input_filename, "rb")
-    returnval = processNifStream(input_stream, input_filename, radius_threshold_arg, ref_scale, input_datadir_arg, output_datadir_arg, decimation_ratio)
-    input_stream.close()
-    return returnval
+##def processNif(input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0), input_datadir_arg=None, output_datadir_arg=None, decimation_ratio=0.8):
+##    input_stream = open(input_filename, "rb")
+##    returnval = processNifStream(input_stream, input_filename, radius_threshold_arg, ref_scale, input_datadir_arg, output_datadir_arg, decimation_ratio)
+##    input_stream.close()
+##    return returnval
 
 def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0), input_datadir_arg=None, output_datadir_arg=None, decimation_ratio=0.8, keep_border=False):
 #    print "\n\nprocessNif() entered"
@@ -357,20 +334,14 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
 #    dds_list = list()
     dds_list = dict()
 
-##    model_minx = None
-##    model_miny = None
-##    model_minz = None
-##    model_maxx = None
-##    model_maxy = None
-##    model_maxz = None
     model_minmax_list = [None, None, None, None, None, None]
 
     model_radius = None
     block_count = None
-    root0 = None
+#    root0 = None
     output_filename_path = None
 
-#    print "processNIF(): Processing " + input_filename + " ..."
+    print "processNIF(): Processing " + input_filename + " ..."
 #    pyffilogger, loghandler = init_logger()
     output_root = init_paths(output_datadir_arg)
 
@@ -391,12 +362,12 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
     nifdata = load_nifstream(input_stream)
     nifdata = cull_nifdata(nifdata)
     index_counter = -1
-    root0 = nifdata.roots[0]
-    current_transform = None
+#    root0 = nifdata.roots[0]
+#    current_transform = None
     for root in nifdata.roots:
         index_counter = index_counter + 1
         root_count = index_counter
-        current_transform = root.get_transform()
+#        current_transform = root.get_transform()
         for block in root.tree():
             index_counter = index_counter + 1
             block_count = index_counter
@@ -461,8 +432,7 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
                     block.add_property(alphablock)
                 # check for VertexData, calculate model_min/max if present
                 if block.data is not None:
-#                    model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz = process_NiTriShapeData(block.data, root0, model_minx, model_miny, model_minz, model_maxx, model_maxy, model_maxz)
-                    model_minmax_list = process_NiTriShapeData(block.data, root0, model_minmax_list)
+                    model_minmax_list = process_NiTriShapeData(block.data, root, model_minmax_list)
                     block_decimation_list.append(block)
 
     if (model_minmax_list[0] is not None):
@@ -495,7 +465,8 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
     if do_output == 1:
 #        if "tree" in input_filename:
         if True:
-            do_nothing = True
+            render_Billboard_textures(nifdata, model_minmax_list, input_filename, input_datadir_arg, output_datadir_arg)
+            
             newroot = NifFormat.NiNode()
             nifdata.roots.append(newroot)
             BillboardAutoGen(input_filename, newroot, model_minmax_list, alphablock)
@@ -566,7 +537,470 @@ def makeTriShape(verts, triangles, normals=None, uv_set=None, texture_name=None,
 
     return shape
 
-def BillboardAutoGen(input_filename, root0, model_minmax_list, alphablock, trunk_center=[0,0]):
+
+from OpenGL.GL import *
+from OpenGL.GLUT import *
+from OpenGL.GLU import *
+from OpenGL.GL.EXT import texture_compression_s3tc as s3tc
+import numpy
+from pyffi.formats.dds import DdsFormat
+
+
+def fbo2_init():
+    fbo2 = GLuint()
+    glGenFramebuffers(1, fbo2)
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo2)
+
+    # color texture buffer
+    rgb_texture2 = GLuint()
+    glGenTextures(1, rgb_texture2)
+    glBindTexture(GL_TEXTURE_2D, rgb_texture2)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SIDE, SIDE, 0, GL_RGBA, GL_UNSIGNED_BYTE, None)
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, rgb_texture2, 0)
+
+    # depth buffer
+    depth_texture2 = GLuint()
+    glGenTextures(1, depth_texture2)
+    glBindTexture(GL_TEXTURE_2D, depth_texture2)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SIDE, SIDE, 0, GL_DEPTH_COMPONENT, GL_FLOAT, None)
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depth_texture2, 0)
+
+    if not glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE:
+        raise Exception('Framebuffer binding failed.  Press ENTER to exit.')
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0)
+    glBindTexture(GL_TEXTURE_2D, 0)
+
+    return fbo2, rgb_texture2, depth_texture2
+
+
+def fbo_init():
+    fbo = GLuint()
+    glGenFramebuffers(1, fbo)
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo)
+
+    # color texture buffer
+    rgb_texture = GLuint()
+    glGenTextures(1, rgb_texture)
+    if Use_GL_MultiSample:
+        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, rgb_texture)
+    else:
+        glBindTexture(GL_TEXTURE_2D, rgb_texture)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+     
+    if Use_GL_MultiSample:
+        glTexImage2DMultisample( GL_TEXTURE_2D_MULTISAMPLE, 8, GL_RGBA8, SIDE, SIDE, True )
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, rgb_texture, 0)
+    else:
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SIDE*MultiSampleRate, SIDE*MultiSampleRate, 0, GL_RGBA, GL_UNSIGNED_BYTE, None)
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, rgb_texture, 0)
+
+    # depth buffer
+    rbo = GLuint()
+    glGenRenderbuffers(1, rbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+    if Use_GL_MultiSample:
+        glRenderbufferStorageMultisample(GL_RENDERBUFFER, 8, GL_DEPTH_COMPONENT, SIDE, SIDE);
+    else:
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, SIDE*MultiSampleRate, SIDE*MultiSampleRate);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rbo);
+
+    if not glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE:
+        raise Exception('Framebuffer binding failed.  Press ENTER to exit.')
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0)
+    glBindTexture(GL_TEXTURE_2D, 0)
+    glBindRenderbuffer(GL_RENDERBUFFER, 0)
+
+    return fbo
+
+
+# Utility functions
+def float_size(n=1):
+    return sizeof(ctypes.c_float) * n
+
+def pointer_offset(n=0):
+    return ctypes.c_void_p(float_size(n))
+
+def load_sourcetexture_block(block, texture_cache, has_alpha, input_datadir):
+    # get texture filename
+    texture_path = block.file_name
+    filename = texture_path
+    
+    if block in texture_cache.keys():
+        # return textureID
+        ddsTexture = texture_cache[block]
+#        print "*** Texture already cached. Binding texture for " + filename
+        glBindTexture(GL_TEXTURE_2D, ddsTexture)
+        return ddsTexture
+        
+    dds_has_alpha = has_alpha
+
+    filename = filename.replace("\\", "/")
+    print "Searching data sources for " + filename
+#    fstream = open(input_datadir + filename, 'rb')
+    fstream = FarNifAutoGen_utils.GetInputFileStream(filename)
+    if fstream is None:
+        return -1
+    ddsdata = DdsFormat.Data()
+    ddsdata.read(fstream)
+    fstream.close()
+
+    height = ddsdata.header.height
+    width = ddsdata.header.width
+    linear_size = ddsdata.header.linear_size
+    mipmap_count = ddsdata.header.mipmap_count
+    pixel_format = ddsdata.header.pixel_format
+    fourCC = pixel_format.four_c_c
+    texture_buffer = ddsdata.pixeldata.get_value()
+
+    if fourCC == DdsFormat.FourCC.DXT1:
+        components = 3
+        blockSize = 8
+    else:
+        components = 4
+        blockSize = 16
+
+    if fourCC == DdsFormat.FourCC.DXT1:
+        glformat = s3tc.GL_COMPRESSED_RGBA_S3TC_DXT1_EXT
+    elif fourCC == DdsFormat.FourCC.DXT3:
+        glformat = s3tc.GL_COMPRESSED_RGBA_S3TC_DXT3_EXT
+    elif fourCC == DdsFormat.FourCC.DXT5:
+        glformat = s3tc.GL_COMPRESSED_RGBA_S3TC_DXT5_EXT
+    else:
+        print "ERROR, unsupported format: " + hex(fourcc)
+        raw_input("Press ENTER to Exit.")
+        exit(-1)
+
+    ddsTexture = GLuint()
+    glGenTextures(1, ddsTexture)
+    glBindTexture(GL_TEXTURE_2D, ddsTexture)
+    glTextureParameteri(ddsTexture, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+#    glTextureParameteri(ddsTexture, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST)
+    glTextureParameterf(ddsTexture, GL_TEXTURE_LOD_BIAS, -1.0)
+
+    glTextureParameteri(ddsTexture, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+#    glTextureParameteri(ddsTexture, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+
+    offset = 0
+    for level in xrange(mipmap_count):
+        size = ((width+3)/4)*((height+3)/4)*blockSize
+        glCompressedTexImage2D(GL_TEXTURE_2D, level, glformat, width, height,
+                               0, size, texture_buffer[offset:offset+size])
+        offset += size
+        width /= 2
+        height /= 2
+        if width == 0:
+            width = 1
+        if height == 0:
+            height = 1
+        if offset >= len(texture_buffer):
+            break;
+
+#    print "Adding " + filename + " to cache..."
+    texture_cache[block] = ddsTexture   
+    return ddsTexture
+
+
+def render_triangle_block_data(block, root, use_strips, fbo, mesh_cache, ddsTexture, RenderView):
+
+    if block in mesh_cache:
+        # skip vertex array creation, just composite transforms and draw vao
+        print "*** Vertex Array already cached..."
+    else:
+        mesh_cache[block] = "placeholder"
+    
+    if block.has_vertices is False:
+        return
+
+# raw draw
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo)
+    glBindTexture(GL_TEXTURE_2D, ddsTexture)
+
+    glMatrixMode(GL_MODELVIEW)
+    glLoadIdentity()
+
+    # insert camera rotations here....
+    #top: no rotation
+    if RenderView is "top":
+        donothing = 1
+    #front: rotate 90 around X
+    if RenderView is "front":
+        glRotatef(90, -1, 0, 0)
+    #side: rotate 90 around X, rotate 90 around Z
+    if RenderView is "side":
+        glRotatef(90, -1, 0, 0)
+        glRotatef(90, 0, 0, 1)
+
+    root_chain = root.find_chain(block)
+    if not root_chain:
+        raise Exception("ERROR: can't find root_chain")
+    for node in reversed(root_chain):
+        if not isinstance(node, NifFormat.NiAVObject):
+            continue
+        node_matrix = node.get_transform().as_list()
+        glMultMatrixf(node_matrix)
+
+    has_uv = False
+    if len(block.uv_sets) > 0:
+        has_uv = True
+    if use_strips:
+        glBegin(GL_TRIANGLE_STRIP)
+        point_offset = 0
+        for i in xrange(block.num_strips):
+            strip_length = block.strip_lengths[i]
+            for point_index in xrange(strip_length):
+                vert_index = block.points[i][point_index]
+                vert = block.vertices[vert_index]
+                if has_uv:
+                    uv = block.uv_sets[0][vert_index]
+                    glTexCoord2f(uv.u, uv.v)                
+                if block.has_vertex_colors:
+                    color = block.vertex_colors[vert_index]
+                    glColor4f(color.r, color.g, color.b, color.a)
+                if block.has_normals:
+                    normal = block.normals[vert_index]
+                    glNormal3f(normal.x, normal.y, normal.z)
+                glVertex3f(vert.x, vert.y, vert.z)
+                point_offset += strip_length
+        glEnd()
+        
+    else:
+        glBegin(GL_TRIANGLES)
+        for i in xrange(block.num_triangles):
+    #        print "drawing triangle # " + str(i)
+            triangle = block.triangles[i]
+            for vert_index in [triangle.v_1, triangle.v_2, triangle.v_3]:
+                vert = block.vertices[vert_index]
+                if has_uv:
+                    uv = block.uv_sets[0][vert_index]
+                    glTexCoord2f(uv.u, uv.v)                
+                if block.has_vertex_colors:
+                    color = block.vertex_colors[vert_index]
+                    glColor4f(color.r, color.g, color.b, color.a)
+                if block.has_normals:
+                    normal = block.normals[vert_index]
+                    glNormal3f(normal.x, normal.y, normal.z)
+                glVertex3f(vert.x, vert.y, vert.z)
+        glEnd()
+   
+    return
+
+
+def render_root_tree(root, RenderView, fbo, mesh_cache, texture_cache, input_datadir):
+
+    for block in root.tree():
+
+##        glMatrixMode(GL_MODELVIEW)
+##        glLoadIdentity()
+###        glMultMatrixf(current_transform.as_list())
+
+##        # insert camera rotations here....
+##        #top: no rotation
+##        if RenderView is "top":
+##            donothing = 1
+##        #front: rotate 90 around X
+##        if RenderView is "front":
+##            glRotatef(90, -1, 0, 0)
+##        #side: rotate 90 around X, rotate 90 around Z
+##        if RenderView is "side":
+##            glRotatef(90, 0, 0, 1)
+
+        if isinstance(block, NifFormat.NiTriShape) or isinstance(block, NifFormat.NiTriStrips):
+            print "Loading Tri-Node: " + block.name
+            block_has_alpha_prop = False
+            sourcetextures_list = list()
+            # 1. check for alpha property first
+            for prop in block.get_properties():
+                if isinstance(prop, NifFormat.NiAlphaProperty):
+                    block_has_alpha_prop = True
+                    # insert Alpha Function Tests Here...
+                if isinstance(prop, NifFormat.NiTexturingProperty):
+                    if prop.has_base_texture:
+                        if prop.base_texture is not None:
+                            sourcetextures_list.append(prop.base_texture.source)
+                    if prop.has_bump_map_texture:
+                        if prop.bump_map_texture is not None:
+                            sourcetextures_list.append(prop.bump_map_texture.source)
+
+            # 1.5 if has_alpha == False
+                # reset Alpha Functions to default state...
+
+            # 2. then process any texture properties
+            for sourcetexture in sourcetextures_list:
+                if sourcetexture is not None:
+                    ddsTexture = load_sourcetexture_block(sourcetexture, texture_cache, block_has_alpha_prop, input_datadir)
+
+            # check for VertexData, calculate model_min/max if present
+            if block.data is not None:
+                use_strips = False
+                if isinstance(block, NifFormat.NiTriStrips):
+                    use_strips = True
+                render_triangle_block_data(block.data, root, use_strips, fbo, mesh_cache, ddsTexture, RenderView)
+
+
+def render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, input_filename, input_datadir, model_minmax_list):
+    model_minx = model_minmax_list[0]
+    model_miny = model_minmax_list[1]
+    model_minz = model_minmax_list[2]
+    model_maxx = model_minmax_list[3]
+    model_maxy = model_minmax_list[4]
+    model_maxz = model_minmax_list[5]
+    
+    # prepare for rendering...
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo)
+    if Use_GL_MultiSample:
+        glViewport( 0, 0, SIDE, SIDE )
+    else:    
+        glViewport( 0, 0, SIDE*MultiSampleRate, SIDE*MultiSampleRate )
+    glClearColor(1.0, 1.0, 1.0, 0.0)
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+
+    glMatrixMode(GL_PROJECTION)
+    glLoadIdentity()
+    # topview: left -X, right +X, bottom -Z, top +Z, near +Y, far -Y
+    # aka: min_x, max_x, min_z, max_z, max_y, min_y
+    if RenderView is "top":
+        glOrtho(model_minx, model_maxx, model_minz, model_maxz, model_maxy, model_miny)
+    # frontview: -X, +X, -Y, +Y, -Z, +Z
+    # aka: min_x, max_x, min_y, max_y, min_z, max_z
+    if RenderView is "front":
+        glOrtho(model_minx, model_maxx, model_miny, model_maxy, model_minz, model_maxz)
+    # sideview: +Z, -Z, -Y, +Y, -X, +X
+    # aka: max_z, min_z, min_y max_y, min_x, max_x
+    if RenderView is "side":
+        glOrtho(model_maxz, model_minz, model_miny, model_maxy, model_minx, model_maxx)
+
+    # step through all nodes...
+#    root0 = nifdata.roots[0]
+#    current_transform = None
+    for root in nifdata.roots:       
+        render_root_tree(root, RenderView, fbo, mesh_cache, texture_cache, input_datadir)
+
+
+def save_fbo_to_file(texture_name, fbo, fbo2, rgb_texture2, depth_texture2, output_datadir):
+    # copy to fbo2
+    glBindFramebuffer(GL_FRAMEBUFFER, 0)
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo)
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo2)
+    if Use_GL_MultiSample:
+        glBlitFramebuffer(0, 0, SIDE, SIDE, 0, 0, SIDE, SIDE, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST)
+    else:
+        glBlitFramebuffer(0, 0, SIDE, SIDE, 0, 0, SIDE*MultiSampleRate, SIDE*MultiSampleRate, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST)
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0)
+    glBindTexture(GL_TEXTURE_2D, 0)
+    glBindRenderbuffer(GL_RENDERBUFFER, 0)
+    glFlush()
+
+    #Obtain the color data in a numpy array
+    glBindTexture(GL_TEXTURE_2D, rgb_texture2)
+    color_str = glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE)
+    glBindTexture(GL_TEXTURE_2D, 0)
+    color_data = numpy.fromstring(color_str, dtype=numpy.uint8)
+    color_data = color_data.reshape((SIDE,SIDE*4))
+    color_data = numpy.flipud(color_data)
+
+    for row_index in xrange(SIDE):
+        offset_start = row_index * SIDE
+        offset_end = offset_start + SIDE
+        working_row = color_data
+
+    rgb_dds = DdsFormat.Data()
+
+    rgb_dds.header.flags.caps = 1
+    rgb_dds.header.flags.height = 1
+    rgb_dds.header.flags.width = 1
+    rgb_dds.header.flags.pitch = 0
+    rgb_dds.header.flags.pixel_format = 1
+    rgb_dds.header.flags.mipmap_count = 0
+    rgb_dds.header.flags.linear_size = 0
+
+    rgb_dds.header.height = SIDE
+    rgb_dds.header.width = SIDE
+    rgb_dds.header.rgb_linear_size = 0
+    rgb_dds.header.mipmap_count = 0
+
+    rgb_dds.header.pixel_format.flags.alpha_pixels = 1
+    rgb_dds.header.pixel_format.flags.four_c_c = 0
+    rgb_dds.header.pixel_format.flags.rgb = 1
+
+    rgb_dds.header.pixel_format.four_c_c = DdsFormat.FourCC.LINEAR
+    rgb_dds.header.pixel_format.bit_count = 32
+    rgb_dds.header.pixel_format.r_mask = 0xFF
+    rgb_dds.header.pixel_format.g_mask = 0xFF00
+    rgb_dds.header.pixel_format.b_mask = 0xFF0000
+    rgb_dds.header.pixel_format.a_mask = 0xFF000000
+
+    rgb_dds.pixeldata.set_value(color_data.tobytes())
+
+    output_filename_path = output_datadir + texture_name
+    folderPath = os.path.dirname(output_filename_path)
+    try:
+        if os.path.exists(folderPath) == False:
+            os.makedirs(folderPath)
+    except:
+        debug_print("processNif() ERROR: could not create destination directory: " + str(folderPath))
+    print "outputing: " + texture_name
+
+    fostream = open(output_filename_path, "wb")
+    rgb_dds.write(fostream)
+    fostream.close()
+
+    return
+
+
+def render_Billboard_textures(nifdata, model_minmax_list, input_filename, input_datadir, output_datadir):
+
+    RenderView = "top"
+    texture_cache = dict()
+    mesh_cache = dict()
+    
+    # initialize glut, opengl
+    glutInit()
+    glutInitDisplayMode(GLUT_RGBA | GLUT_MULTISAMPLE)
+    glutInitWindowSize(window_width, window_height)
+    glutInitWindowPosition(0,0)
+    window = glutCreateWindow("Billboard Texture Preview")
+
+    fbo = fbo_init()
+    fbo2, rgb_texture2, depth_texture2 = fbo2_init()
+
+    glEnable(GL_TEXTURE_2D)
+    glEnable(GL_DEPTH_TEST)
+    glEnable(GL_MULTISAMPLE)
+
+    #glEnable(GL_BLEND)
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+    #glBlendFuncSeparate(GL_ONE, GL_ZERO, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+    glEnable(GL_ALPHA_TEST)
+    glAlphaFunc(GL_GREATER, 88./255)
+
+    RenderView = "top"   
+    render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, input_filename, input_datadir, model_minmax_list)
+    texture_name = input_filename.lower().replace("\\", "/").replace(".nif", "Top.dds").replace("meshes/", "textures/lowres/")
+    save_fbo_to_file(texture_name, fbo, fbo2, rgb_texture2, depth_texture2, output_datadir)
+
+    RenderView = "front"   
+    render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, input_filename, input_datadir, model_minmax_list)
+    texture_name = texture_name.replace("Top.dds", "Front.dds")
+    save_fbo_to_file(texture_name, fbo, fbo2, rgb_texture2, depth_texture2, output_datadir)
+
+    RenderView = "side"   
+    render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, input_filename, input_datadir, model_minmax_list)
+    texture_name = texture_name.replace("Front.dds", "Side.dds")
+    save_fbo_to_file(texture_name, fbo, fbo2, rgb_texture2, depth_texture2, output_datadir)
+
+    return
+
+def BillboardAutoGen(input_filename, root, model_minmax_list, alphablock, trunk_center=[0,0]):
+    # TODO: remove existing meshes
+
     model_minx = model_minmax_list[0]
     model_miny = model_minmax_list[1]
     model_minz = model_minmax_list[2]
@@ -587,11 +1021,6 @@ def BillboardAutoGen(input_filename, root0, model_minmax_list, alphablock, trunk
     VertsA.append( [model_maxx, trunk_center[1], model_maxz])
     VertsA.append( [model_minx, trunk_center[1], model_maxz])
 
-    TrianglesA = []
-    TrianglesA.append( [0, 1, 2]) # front
-    TrianglesA.append( [0, 2, 3] )# front
-    TrianglesA.append( [4, 6, 5]) # back
-    TrianglesA.append( [4, 7, 6] )# back
 #    Normalset = []
     normals = []
     #front
@@ -607,19 +1036,26 @@ def BillboardAutoGen(input_filename, root0, model_minmax_list, alphablock, trunk
 #    UVset = []
     uv_set = []
     #front
-    uv_set.append([0, 0])
-    uv_set.append([-1, 0])
-    uv_set.append([-1, 1])
     uv_set.append([0, 1])
-    #back
-    uv_set.append([0, 0])
-    uv_set.append([1, 0])
     uv_set.append([1, 1])
+    uv_set.append([1, 0])
+    uv_set.append([0, 0])
+    #back
     uv_set.append([0, 1])
+    uv_set.append([1, 1])
+    uv_set.append([1, 0])
+    uv_set.append([0, 0])
 
-    texture_name = input_filename.lower().replace("\\", "/").replace(".nif", "_billboard_front.dds").replace("meshes/", "textures/lowres/")
+    TrianglesA = []
+    TrianglesA.append( [0, 1, 2]) # front
+    TrianglesA.append( [0, 2, 3] )# front
+    TrianglesA.append( [4, 6, 5]) # back
+    TrianglesA.append( [4, 7, 6] )# back
+
+    texture_name = input_filename.lower().replace("\\", "/").replace(".nif", "Front.dds").replace("meshes/", "textures/lowres/")
+#    texture_name = "PLACEHOLDER"
     shape = makeTriShape(VertsA, TrianglesA, normals, uv_set, texture_name, alphablock)
-    root0.add_child(shape)
+    root.add_child(shape)
     
     # Billboard B: Y-Z Plane, X=0
     VertsB = []
@@ -644,9 +1080,12 @@ def BillboardAutoGen(input_filename, root0, model_minmax_list, alphablock, trunk
 #    UVset = []
     # Reuse UVset
 
-    texture_name = texture_name.replace("_billboard_front.dds", "_billboard_back.dds")
+    texture_name = texture_name.replace("Front.dds", "Side.dds")
+#    texture_name = "PLACEHOLDER"
     shape = makeTriShape(VertsB, TrianglesA, normals, uv_set, texture_name, alphablock)
-    root0.add_child(shape)
+    root.add_child(shape)
+
+
 
 def PMBlock(block, decimation_ratio, keep_border=False):
 #    print "========================NEW BLOCK========================="

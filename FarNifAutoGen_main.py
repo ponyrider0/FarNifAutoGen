@@ -28,6 +28,10 @@ import zlib
 import FarNifAutoGen_processNif
 #from FarNifAutoGen_processNif import processNif
 #from FarNifAutoGen_processNif import output_filename_path
+#from FarNifAutoGen_utils import *
+#from FarNifAutoGen_utils import InitializeDataSourceList
+#from FarNifAutoGen_utils import GetInputFileStream
+import FarNifAutoGen_utils
 
 # PyProgMesh Path
 if (os.environ.get("PYPROGMESH_HOME") is not None):
@@ -105,13 +109,7 @@ if "data/" in output_datadir.lower() or "data\\" in output_datadir.lower():
     output_root = output_root.replace("data\\","")
 else:
     output_root = output_datadir
-#output_root = outputRoot + "FarNifAutoGen.output/"
-#output_datadir = output_root + "data/"
-##print "DEBUG: input_datadir = " + input_datadir
-##print "DEBUG: input_root = " + input_root
-##print "DEBUG: output_datadir = " + output_datadir
-##print "DEBUG: output_root = " + output_root
-##raw_input()
+
     
 if (os.environ.get("GIMPEXE") is not None):
     gimpPath = os.environ["GIMPEXE"]
@@ -119,7 +117,7 @@ else:
     gimpPath = "C:/Program Files/GIMP 2/bin/gimp-console-2.8.exe"
 if os.path.exists(gimpPath) == False:
     print "==================="
-    print "ERROR: GIMP was not found. Please set the GIMPEXE variable to the path of your blender executable."
+    print "ERROR: GIMP was not found. Please set the GIMPEXE variable to the path of your GIMP executable."
     print "==================="
     raw_input("Press ENTER to quit.")
     quit(-1)
@@ -151,141 +149,6 @@ def debug_print(err_string):
         error_file.close()
 
 
-user_option_dont_autoread_bsa = False
-data_source_list_filename = "data_source_list.txt"
-data_source_tempfilename = "lookup_datasources.tmp"
-def Initialize_Data_Source_List():
-    data_source_list = list()
-    data_source_dict = dict()
-    cleaned_datadir = os.path.normpath(input_datadir).replace("\\","/").lower() + "/"
-    if os.path.exists(cleaned_datadir):
-        tags = "+nif+dds"
-        print "Adding datasource: " + cleaned_datadir + "," + tags
-        data_source_list.append(cleaned_datadir)
-        data_source_dict[cleaned_datadir] = tags
-    # read in data_sources file to priority_list
-    if os.path.exists(data_source_list_filename):
-        priority_stream = open(data_source_list_filename, "r")
-        for raw_line in priority_stream:
-            line = raw_line.lower().rstrip("\r\n")
-            line = os.path.normpath(line).replace("\\","/")
-            if "/" not in line:
-                line = cleaned_datadir + line
-            if os.path.exists(line) and line not in data_source_list:
-                if os.path.isdir(line):
-                    if line[len(line)-1] is not "/":
-                        line = line + "/"
-                    tags = "+nif+dds"
-                    print "Adding datasource: " + line + "," + tags
-                    data_source_list.append(line)
-                    data_source_dict[line] = tags
-                elif os.path.isfile(line):
-                    # inspect bsa for nif and dds
-                    bsa_stream = open(line, "rb")
-                    bsa_data = BsaFormat.Data()
-                    bsa_data.inspect(bsa_stream)
-                    tags = ""
-                    if bsa_data.file_flags.has_nif:
-                        tags = "+nif"
-                    if bsa_data.file_flags.has_dds:
-                        tags = tags + "+dds"
-                    if tags is not "":
-                        print "Adding datasource: " + line + "," + tags
-                        data_source_list.append(line)
-                        data_source_dict[line] = tags
-        priority_stream.close()
-    if user_option_dont_autoread_bsa is True:
-        skip_autoread = True
-    else:
-        for BSAfile in glob.glob(cleaned_datadir + "*.bsa"):
-            line = os.path.normpath(BSAfile).lower().replace("\\","/")
-            if line not in data_source_list:
-                # inspect bsa for nif and dds
-                bsa_stream = open(line, "rb")
-                bsa_data = BsaFormat.Data()
-                bsa_data.inspect(bsa_stream)
-                tags = ""
-                if bsa_data.file_flags.has_nif:
-                    tags = "+nif"
-                if bsa_data.file_flags.has_dds:
-                    tags = tags + "+dds"
-                if tags is not "":
-                    print "Adding datasource: " + line + "," + tags
-                    data_source_list.append(line)
-                    data_source_dict[line] = tags
-    # write data_source temp file
-    data_source_tempstream = open(data_source_tempfilename,"w")
-    for key in data_source_list:
-        data_source_tempstream.write(key + "," + data_source_dict[key] + "\n")
-    data_source_tempstream.close()
-
-def GetInputFileStream(filename):
-    # load lookup_datasource tempfile
-    data_source_tempstream = open(data_source_tempfilename,"r")
-    for raw_line in data_source_tempstream:
-        line, tags = raw_line.rstrip("\r\n").split(",",1)
-#        print "datasource: " + line
-        if os.path.isdir(line):
-            # search for filename directly from path
-            if os.path.exists(line + filename):
-                # copy to tempfile and return tempfile_object
-                in_stream = open(line + filename, "rb")
-                tempfile_stream = tempfile.TemporaryFile()                
-                data = in_stream.read()
-                tempfile_stream.write(data)
-                in_stream.close()
-                tempfile_stream.seek(0)
-                data_source_tempstream.close()
-                return tempfile_stream
-            else:
-                continue
-        elif os.path.isfile(line):
-            # search for filename in BSA
-            # load bsa
-            bsa_stream = open(line, "rb")
-            bsa_data = BsaFormat.Data()
-            bsa_data.inspect(bsa_stream)
-            if ".nif" in filename.lower() and "nif" not in tags:
-#                if bsa_data.file_flags.has_nif is False:
-                    continue
-            elif ".dds" in filename.lower() and "dds" not in tags:
-#                if bsa_data.file_flags.has_dds is False:
-                    continue
-            bsa_is_compressed = bsa_data.archive_flags.is_compressed
-            bsa_data.read(bsa_stream)
-            for folder_block in bsa_data.folders:
-                for file_block in folder_block.files:
-                    bsa_filepath = folder_block.name + "/" + file_block.name
-                    bsa_filepath = os.path.normpath(bsa_filepath).replace("\\","/").lower()
-                    if bsa_filepath == filename:
-                        # get stream to filepath
-                        file_offset = file_block.offset
-                        file_size = file_block.file_size.num_bytes
-                        bsa_stream.seek(file_offset)
-                        if file_block.file_size.is_compressed_override:
-                            fileblock_is_compressed = not bsa_is_compressed
-                        else:
-                            fileblock_is_compressed = bsa_is_compressed
-                        if fileblock_is_compressed:
-                            file_originalsize = bsa_stream.read(4)
-                            z_data = bsa_stream.read(file_size)
-                            file_data = zlib.decompress(z_data)
-                        else:
-                            file_data = bsa_stream.read(file_size)
-                        tempfile_stream = tempfile.TemporaryFile()
-                        tempfile_stream.write(file_data)
-                        bsa_stream.close()
-                        tempfile_stream.seek(0)
-                        data_source_tempstream.close()
-                        return tempfile_stream
-                    else:
-                        continue
-            bsa_stream.close()
-
-    data_source_tempstream.close()
-    # assume load failed
-    debug_print("GetInputFileStream(" + filename + ") ERROR: could not load file from any data_source.")
-    return None
 
 
 # launch gimp
@@ -423,7 +286,7 @@ def main():
     print "Starting FarNifAutoGen..."
 
     # set up data_sources tempfile
-    Initialize_Data_Source_List()
+    FarNifAutoGen_utils.Initialize_Data_Source_List(input_datadir)
 
     # set up output_dir
     if os.path.exists(output_datadir) == False:
@@ -448,7 +311,6 @@ def main():
         exclusions_list_stream.close()
 
     # read niflist.job
-#    print "\n1a. Read the nif_list.job file"
     if not os.path.exists(nif_list_jobfile):
         print "joblist not found: " + nif_list_jobfile + ". Exiting."
         return()
@@ -457,6 +319,8 @@ def main():
     nifjob_stream = open(nif_list_jobfile, "r")
     for line in nifjob_stream:
         line = line.lower().rstrip("\r\n")
+        if len(line.strip(" ")) == 0:
+            continue
         nif_filename, ref_scale = line.split(',')
         nif_filename = str(os.path.normpath(nif_filename))
         nif_filename = nif_filename.replace("\\","/")
@@ -480,6 +344,7 @@ def main():
         pool = multiprocessing.Pool(processes=CPU_COUNT)
         map_async_result = pool.map_async(perform_job_processNif_safe, [(x, mqueue) for x in nif_joblist.iteritems()])
 
+        # do non-blocking wait for job pool threads to complete, then retrieve and post-process results
         while not map_async_result.ready() or mqueue.qsize() > 0:
             try:
                 mqueue_result = mqueue.get_nowait()
@@ -499,7 +364,8 @@ def main():
                 else:
                     mod_reduction = nif_reduction_scale
                 FarNifAutoGen_processNif.postprocessNif(output_datadir + out_filename)
-                
+
+        # do a final blocking wait for any remaining threads to complete                
         try:
             map_async_result.wait(timeout=99999999)
             pool.close()
@@ -507,6 +373,7 @@ def main():
         except KeyboardInterrupt:
             print "ERROR: jobpool processNif() interrupted."
 
+        # retrieve and post-process results from remaining threads
         while True:
             try:
                 mqueue_result = mqueue.get_nowait()
@@ -528,7 +395,7 @@ def main():
     else:
         #======= Single-threaded processNif() ========
         for filename in nif_joblist:
-            tempfile_stream = GetInputFileStream(filename)
+            tempfile_stream = FarNifAutoGen_utils.GetInputFileStream(filename)
             if tempfile_stream is not None:
                 keep_border = False
                 if "terrain" in filename or "rock" in filename:
@@ -544,9 +411,11 @@ def main():
 
                 if nif_reduction_scale <= 0.50:
                     mod_reduction = nif_reduction_scale
-                    
+
+                # processNif a single nifstream and retrieve results    
                 do_output = FarNifAutoGen_processNif.processNifStream(tempfile_stream, filename, radius_threshold_arg=mod_threshold, ref_scale=nif_joblist[filename], input_datadir_arg=input_datadir, output_datadir_arg=output_datadir, decimation_ratio=mod_reduction, keep_border=keep_border)
                 tempfile_stream.close()
+                
                 if do_output == 1:
                     out_filename = filename[:-4] + "_far.nif"
                 elif do_output == 0:
@@ -558,7 +427,6 @@ def main():
 
 
     # read ddslist.job (lowres_list.job)
-#    print "\n2a. Read the dds job file: " + output_root + dds_list_jobfile
     if not os.path.exists(output_root + dds_list_jobfile):
         print "no dds joblist found. skipping dds processing step."
     else:
