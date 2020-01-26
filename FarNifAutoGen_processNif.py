@@ -129,30 +129,6 @@ def process_NiTriShapeData(block, root, model_minmax_list):
     model_maxy = model_minmax_list[4]
     model_maxz = model_minmax_list[5]
 
-##    root_chain = root.find_chain(block)
-##    if not root_chain:
-##        raise Exception("ERROR: can't find root_chain")
-##    identity_matrix = [ [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1] ]
-####    correction_matrix = [[ 1.000000e+00,  0.000000e+00, -0.000000e+00,  0.000000e+00],
-####                         [-0.000000e+00, -8.742278e-08, -1.000000e+00,  0.000000e+00],
-####                         [ 0.000000e+00,  1.000000e+00, -8.742278e-08,  0.000000e+00],
-####                         [ 0.000000e+00,  0.000000e+00,  0.000000e+00,  1.000000e+00]]
-##    # compose in row-major for convenience
-##    correction_matrix = [ [1, 0, 0, 0],
-##                          [0, 1, 0, 0],
-##                          [0, 0, 1, 0],
-##                          [0, 0, 0, 1] ]
-##    # convert to column-major for operations
-##    correction_matrix = matTransposed(correction_matrix)
-##    global_matrix = correction_matrix
-##    # start with identity matrix
-##    for node in reversed(root_chain[1:-1]):
-##        if not isinstance(node, NifFormat.NiAVObject):
-##            continue
-##        local_matrix = node.get_transform().as_list()
-##        global_matrix = matMul(local_matrix, global_matrix)
-###        global_matrix = matMul(global_matrix, local_matrix)
-
     root_chain = root.find_chain(block)
     if not root_chain:
         raise Exception("ERROR: can't find root_chain")
@@ -166,24 +142,6 @@ def process_NiTriShapeData(block, root, model_minmax_list):
 #        print "Node.name: " + node.name
 #        print local_matrix
         global_matrix = matMul(global_matrix, local_matrix.as_list())
-
-##    print "\ntransposed matrix: "
-##    trans_matrix = matTransposed(global_matrix)
-##    for matrix_col in xrange(4):
-##        print trans_matrix[matrix_col]
-###    raw_input("Press ENTER")
-##
-##    print "\nglobal matrix: "
-##    for matrix_col in xrange(4):
-##        print global_matrix[matrix_col]
-##
-##    test_vert = [1, 1, 1, 1]
-##    print "\n\nTEST VERT:"
-##    print test_vert
-##    transformed_vert = matvecMul(matTransposed(global_matrix), test_vert)
-##    print "\n\nTRANSFORMED VERT:"
-##    print transformed_vert
-##    exit(-1)
 
     # FIX BUG IN MATVECMUL
     global_matrix = matTransposed(global_matrix)
@@ -902,22 +860,6 @@ def render_triangle_block_data(block, root, use_strips, fbo, mesh_cache, ddsText
 def render_root_tree(root, RenderView, fbo, mesh_cache, texture_cache, input_datadir):
 
     for block in root.tree():
-
-##        glMatrixMode(GL_MODELVIEW)
-##        glLoadIdentity()
-###        glMultMatrixf(current_transform.as_list())
-
-##        # insert camera rotations here....
-##        #top: no rotation
-##        if RenderView is "top":
-##            donothing = 1
-##        #front: rotate 90 around X
-##        if RenderView is "front":
-##            glRotatef(90, -1, 0, 0)
-##        #side: rotate 90 around X, rotate 90 around Z
-##        if RenderView is "side":
-##            glRotatef(90, 0, 0, 1)
-
         if isinstance(block, NifFormat.NiTriShape) or isinstance(block, NifFormat.NiTriStrips):
 #            print "Loading Tri-Node: " + block.name
             block_has_alpha_prop = False
@@ -978,20 +920,7 @@ def render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, i
 
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
-##    # topview: left -X, right +X, bottom -Z, top +Z, near +Y, far -Y
-##    # aka: min_x, max_x, min_z, max_z, max_y, min_y
-##    if RenderView is "top":
-##        glOrtho(model_minx, model_maxx, model_minz, model_maxz, model_maxy, model_miny)
-##    # frontview: -X, +X, -Y, +Y, -Z, +Z
-##    # aka: min_x, max_x, min_y, max_y, min_z, max_z
-##    if RenderView is "front":
-##        glOrtho(model_minx, model_maxx, model_miny, model_maxy, model_minz, model_maxz)
-##    # sideview: +Z, -Z, -Y, +Y, -X, +X
-##    # aka: max_z, min_z, min_y max_y, min_x, max_x
-##    if RenderView is "side":
-##        glOrtho(model_maxz, model_minz, model_miny, model_maxy, model_minx, model_maxx)
 
-#    glOrtho(model_minx, model_maxx, model_miny, model_maxy, model_minz, model_maxz)
 #    # top projection
     if RenderView is "top":
         glOrtho(model_minx, model_maxx, model_miny, model_maxy, model_minz-1000, model_maxz+1000)
@@ -1004,8 +933,6 @@ def render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, i
         glOrtho(model_miny, model_maxy, model_minz, model_maxz, model_minx, model_maxx)
 
     # step through all nodes...
-#    root0 = nifdata.roots[0]
-#    current_transform = None
     for root in nifdata.roots:       
         render_root_tree(root, RenderView, fbo, mesh_cache, texture_cache, input_datadir)
 
@@ -1107,13 +1034,6 @@ def render_Billboard_textures(nifdata, model_minmax_list, input_filename, input_
 
     glEnable(GL_TEXTURE_2D)
     glEnable(GL_DEPTH_TEST)
-    glEnable(GL_MULTISAMPLE)
-
-    #glEnable(GL_BLEND)
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-    #glBlendFuncSeparate(GL_ONE, GL_ZERO, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-    glEnable(GL_ALPHA_TEST)
-    glAlphaFunc(GL_GREATER, 88./255)
 
     RenderView = "top"   
     render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, input_filename, input_datadir, model_minmax_list)
