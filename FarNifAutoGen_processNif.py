@@ -20,8 +20,8 @@ import FarNifAutoGen_utils
 Use_GL_MultiSample = False
 SIDE = 1024
 MultiSampleRate = 1
-window_width = 128
-window_height = 128
+window_width = 1
+window_height = 1
 
 # PyProgMesh Path
 if (os.environ.get("PYPROGMESH_HOME") is not None):
@@ -241,7 +241,7 @@ def output_niffile(nifdata, input_filename, output_datadir):
             os.makedirs(folderPath)
     except:
         debug_print("processNif() ERROR: could not create destination directory: " + str(folderPath))
-    print "outputing: " + output_filename
+    print "writing: " + output_filename
 #    debug_print("outputting: " + output_filename)
     ostream = open(output_filename_path, 'wb')
     nifdata.write(ostream)
@@ -285,12 +285,21 @@ def postprocessNif(filename):
 ##    input_stream.close()
 ##    return returnval
 
-def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0), input_datadir_arg=None, output_datadir_arg=None, decimation_ratio=0.8, keep_border=False):
+def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, ref_scale=float(1.0),
+                     input_datadir_arg=None, output_datadir_arg=None,
+                     decimation_ratio=0.8, keep_border=False,
+                     texture_cache=None):
 #    print "\n\nprocessNif() entered"
     # intialize globals
     model_has_alpha_prop = False
 #    dds_list = list()
     dds_list = dict()
+
+    if texture_cache is None:
+        print "Cache not found.  Initializing new cache..."
+        texture_cache = dict()
+#    print "Reset texture cache"
+#    texture_cache = dict()
 
     model_minmax_list = [None, None, None, None, None, None]
 
@@ -299,7 +308,7 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
 #    root0 = None
     output_filename_path = None
 
-    print "processNIF(): Processing " + input_filename + " ..."
+    print "\nProcessing " + input_filename + " ..."
 #    pyffilogger, loghandler = init_logger()
     output_root = init_paths(output_datadir_arg)
 
@@ -412,7 +421,7 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
 #    pyffi.spells.nif.optimize.SpellCleanRefLists(data=nifdata).recurse()
     
     # if radius too small, skip
-    print "DEBUG: radius=" + str(model_radius) + ", ref_scale=" + str(ref_scale)
+#    print "DEBUG: radius=" + str(model_radius) + ", ref_scale=" + str(ref_scale)
     if (model_radius is None):
 #        print "ERROR: no model_radius calculated, unsupported NIF file."
         do_output = -1
@@ -427,14 +436,16 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
     if do_output == 1:
 #        if "tree" in input_filename:
         if True:
-            render_Billboard_textures(nifdata, model_minmax_list, input_filename, input_datadir_arg, output_datadir_arg)
+            render_Billboard_textures(nifdata, model_minmax_list,
+                                      input_filename, input_datadir_arg, output_datadir_arg,
+                                      dds_list, texture_cache)
             newroot = NifFormat.NiNode()
             newroot.name = "Scene Root"
 #            nifdata.roots.append(newroot)
 
             billboard_alpha = NifFormat.NiAlphaProperty()
             billboard_alpha.flags = 4844
-            billboard_alpha.threshold = 127
+            billboard_alpha.threshold = 0
             BillboardAutoGen(input_filename, newroot, model_minmax_list, billboard_alpha)
 
             # create new nifdata stream and write to output file ....
@@ -453,7 +464,7 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
 #        print "calling output_niffile(nifdata, input_filename, output_datadir)"
 #        output_niffile(nifdata, input_filename, output_datadir_arg)
 #        print "calling output_ddslist(dds_list)"
-#        output_ddslist(dds_list, output_root)
+        output_ddslist(dds_list, output_root)
         
 #    print "calling shutdown_logger()"
 #    shutdown_logger(pyffilogger, loghandler)
@@ -586,19 +597,19 @@ def interpret_alpha_prop(prop):
     else:
         glDisable(GL_BLEND)
 
-    #force off
-    glDisable(GL_BLEND)
+##    #force off
+##    glDisable(GL_BLEND)
 
-    print "source_blend_func = " + hex(flag_source_blend_func)
-    print "dest_blend_func = " + hex(flag_dest_blend_func)
-    print "alpha_test_mode = " + hex(flag_alpha_test_mode)
+#    print "source_blend_func = " + hex(flag_source_blend_func)
+#    print "dest_blend_func = " + hex(flag_dest_blend_func)
+#    print "alpha_test_mode = " + hex(flag_alpha_test_mode)
 
     src_func = interpret_blendfunc(flag_source_blend_func)
     dest_func = interpret_blendfunc(flag_dest_blend_func)
     alpha_func = interpet_alphafunc(flag_alpha_test_mode)
     
     glBlendFunc(src_func, dest_func)
-    threshold = prop.threshold / 255.
+    threshold = prop.threshold / 255.    
     glAlphaFunc(alpha_func, threshold)
         
     if flag_alpha_test_enable:
@@ -680,7 +691,7 @@ def fbo_init():
     glBindTexture(GL_TEXTURE_2D, 0)
     glBindRenderbuffer(GL_RENDERBUFFER, 0)
 
-    return fbo
+    return fbo, rgb_texture, rbo
 
 
 # Utility functions
@@ -693,23 +704,25 @@ def pointer_offset(n=0):
 def load_sourcetexture_block(block, texture_cache, has_alpha, has_parallax, input_datadir):
     # get texture filename
     texture_path = block.file_name
-    filename = texture_path
-    
-    if block in texture_cache.keys():
+    filename = os.path.normpath(texture_path.lower()).replace("\\", "/")
+
+    key = filename.replace("/", ".").replace("\\", ".")
+    if key in texture_cache:
         # return textureID
-        ddsTexture = texture_cache[block]
-#        print "*** Texture already cached. Binding texture for " + filename
+        ddsTexture = texture_cache[key]
+        print "*** Loading texture from cache: " + filename
         glBindTexture(GL_TEXTURE_2D, ddsTexture)
         return ddsTexture
         
     dds_has_alpha = has_alpha
 
-    filename = filename.replace("\\", "/")
+#    filename = filename.replace("\\", "/")
     print "Searching data sources for " + filename
 #    fstream = open(input_datadir + filename, 'rb')
     fstream = FarNifAutoGen_utils.GetInputFileStream(filename)
     if fstream is None:
         return -1
+    
     ddsdata = DdsFormat.Data()
     ddsdata.read(fstream)
     fstream.close()
@@ -755,6 +768,7 @@ def load_sourcetexture_block(block, texture_cache, has_alpha, has_parallax, inpu
         size = ((width+3)/4)*((height+3)/4)*blockSize
         glCompressedTexImage2D(GL_TEXTURE_2D, level, glformat, width, height,
                                0, size, texture_buffer[offset:offset+size])
+#        print "loading mipmap level: " + str(level)
         offset += size
         width /= 2
         height /= 2
@@ -766,7 +780,7 @@ def load_sourcetexture_block(block, texture_cache, has_alpha, has_parallax, inpu
             break;
 
 #    print "Adding " + filename + " to cache..."
-    texture_cache[block] = ddsTexture   
+    texture_cache[key] = ddsTexture   
     return ddsTexture
 
 
@@ -774,7 +788,9 @@ def render_triangle_block_data(block, root, use_strips, fbo, mesh_cache, ddsText
 
     if block in mesh_cache:
         # skip vertex array creation, just composite transforms and draw vao
-        print "*** Vertex Array already cached..."
+#        print "*** Vertex Array already cached..."
+        # todo... move to vertex array drawiing
+        todo_later = 1
     else:
         mesh_cache[block] = "placeholder"
     
@@ -915,7 +931,7 @@ def render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, i
         glViewport( 0, 0, SIDE, SIDE )
     else:    
         glViewport( 0, 0, SIDE*MultiSampleRate, SIDE*MultiSampleRate )
-    glClearColor(1.0, 1.0, 1.0, 0.0)
+    glClearColor(0.0, 0.0, 0.0, 0.0)
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
     glMatrixMode(GL_PROJECTION)
@@ -1000,7 +1016,7 @@ def save_fbo_to_file(texture_name, fbo, fbo2, rgb_texture2, depth_texture2, outp
             os.makedirs(folderPath)
     except:
         debug_print("processNif() ERROR: could not create destination directory: " + str(folderPath))
-#    print "outputing: " + texture_name
+    print "writing: " + texture_name
 
     fostream = open(output_filename_path, "wb")
     rgb_dds.write(fostream)
@@ -1009,10 +1025,11 @@ def save_fbo_to_file(texture_name, fbo, fbo2, rgb_texture2, depth_texture2, outp
     return
 
 
-def render_Billboard_textures(nifdata, model_minmax_list, input_filename, input_datadir, output_datadir):
+def render_Billboard_textures(nifdata, model_minmax_list,
+                              input_filename, input_datadir, output_datadir,
+                              dds_list, texture_cache):
 
     RenderView = "top"
-    texture_cache = dict()
     mesh_cache = dict()
 
     doInit = False    
@@ -1028,8 +1045,9 @@ def render_Billboard_textures(nifdata, model_minmax_list, input_filename, input_
         glutInitWindowSize(window_width, window_height)
         glutInitWindowPosition(0,0)
         window = glutCreateWindow("Billboard Texture Preview")
+        glutHideWindow()        
 
-    fbo = fbo_init()
+    fbo, rgb_texture, rbo = fbo_init()
     fbo2, rgb_texture2, depth_texture2 = fbo2_init()
 
     glEnable(GL_TEXTURE_2D)
@@ -1039,16 +1057,26 @@ def render_Billboard_textures(nifdata, model_minmax_list, input_filename, input_
     render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, input_filename, input_datadir, model_minmax_list)
     texture_name = input_filename.lower().replace("\\", "/").replace(".nif", "Top.dds").replace("meshes/", "textures/lowres/")
     save_fbo_to_file(texture_name, fbo, fbo2, rgb_texture2, depth_texture2, output_datadir)
+    dds_list[texture_name] = True
 
     RenderView = "front"   
     render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, input_filename, input_datadir, model_minmax_list)
     texture_name = texture_name.replace("Top.dds", "Front.dds")
     save_fbo_to_file(texture_name, fbo, fbo2, rgb_texture2, depth_texture2, output_datadir)
+    dds_list[texture_name] = True
 
     RenderView = "side"   
     render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, input_filename, input_datadir, model_minmax_list)
     texture_name = texture_name.replace("Front.dds", "Side.dds")
     save_fbo_to_file(texture_name, fbo, fbo2, rgb_texture2, depth_texture2, output_datadir)
+    dds_list[texture_name] = True
+
+    glDeleteTextures(rgb_texture)
+    glDeleteTextures(rgb_texture2)
+    glDeleteTextures(depth_texture2)
+    glDeleteFramebuffers(1, fbo)
+    glDeleteFramebuffers(1, fbo2)
+    glDeleteFramebuffers(1, rbo)
 
     return
 
@@ -1242,3 +1270,71 @@ def PMBlock(block, decimation_ratio, keep_border=False):
 #            block.strips.update_size()
             block.set_strips(strips)
             
+
+def GetInputFileStream(filename):
+    # load lookup_datasource tempfile
+    data_source_tempstream = open(data_source_tempfilename,"r")
+    for raw_line in data_source_tempstream:
+        line, tags = raw_line.rstrip("\r\n").split(",",1)
+#        print "datasource: " + line
+        if os.path.isdir(line):
+            # search for filename directly from path
+            if os.path.exists(line + filename):
+                # copy to tempfile and return tempfile_object
+                in_stream = open(line + filename, "rb")
+                tempfile_stream = tempfile.TemporaryFile()                
+                data = in_stream.read()
+                tempfile_stream.write(data)
+                in_stream.close()
+                tempfile_stream.seek(0)
+                data_source_tempstream.close()
+                return tempfile_stream
+            else:
+                continue
+        elif os.path.isfile(line):
+            # search for filename in BSA
+            # load bsa
+            bsa_stream = open(line, "rb")
+            bsa_data = BsaFormat.Data()
+            bsa_data.inspect(bsa_stream)
+            if ".nif" in filename.lower() and "nif" not in tags:
+#                if bsa_data.file_flags.has_nif is False:
+                    continue
+            elif ".dds" in filename.lower() and "dds" not in tags:
+#                if bsa_data.file_flags.has_dds is False:
+                    continue
+            bsa_is_compressed = bsa_data.archive_flags.is_compressed
+            bsa_data.read(bsa_stream)
+            for folder_block in bsa_data.folders:
+                for file_block in folder_block.files:
+                    bsa_filepath = folder_block.name + "/" + file_block.name
+                    bsa_filepath = os.path.normpath(bsa_filepath).replace("\\","/").lower()
+                    if bsa_filepath == filename.replace("\\","/").lower():
+                        # get stream to filepath
+                        file_offset = file_block.offset
+                        file_size = file_block.file_size.num_bytes
+                        bsa_stream.seek(file_offset)
+                        if file_block.file_size.is_compressed_override:
+                            fileblock_is_compressed = not bsa_is_compressed
+                        else:
+                            fileblock_is_compressed = bsa_is_compressed
+                        if fileblock_is_compressed:
+                            file_originalsize = bsa_stream.read(4)
+                            z_data = bsa_stream.read(file_size)
+                            file_data = zlib.decompress(z_data)
+                        else:
+                            file_data = bsa_stream.read(file_size)
+                        tempfile_stream = tempfile.TemporaryFile()
+                        tempfile_stream.write(file_data)
+                        bsa_stream.close()
+                        tempfile_stream.seek(0)
+                        data_source_tempstream.close()
+                        return tempfile_stream
+                    else:
+                        continue
+            bsa_stream.close()
+
+    data_source_tempstream.close()
+    # assume load failed
+    debug_print("GetInputFileStream(" + filename + ") ERROR: could not load file from any data_source.")
+    return None

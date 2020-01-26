@@ -199,7 +199,7 @@ def launchGIMP_jobpool(joblist_file, reduction_scale_arg=0.125):
 
 
 def perform_job_processNif_safe(args):
-    filename, ref_scale, mqueue = args[0][0], args[0][1], args[1]    
+    filename, ref_scale, texture_cache, mqueue = args[0][0], args[0][1], args[1], args[2]
     try:
         perform_job_processNif(args)
     except Exception as e:
@@ -210,7 +210,7 @@ def perform_job_processNif_safe(args):
 #def perform_job_processNif(filename):
 def perform_job_processNif(args):
 #    print "perform_job_processNif() called: " + str(args)
-    filename, ref_scale, mqueue = args[0][0], args[0][1], args[1]
+    filename, ref_scale, texture_cache, mqueue = args[0][0], args[0][1], args[1], args[2]
     
     global input_datadir
     global output_datadir
@@ -235,7 +235,11 @@ def perform_job_processNif(args):
         if nif_reduction_scale <= 0.50:
             mod_reduction = nif_reduction_scale
         
-        do_output = FarNifAutoGen_processNif.processNifStream(tempfile_stream, filename, radius_threshold_arg=mod_threshold, ref_scale=ref_scale, input_datadir_arg=input_datadir, output_datadir_arg=output_datadir, decimation_ratio=mod_reduction, keep_border=keep_border)
+        do_output = FarNifAutoGen_processNif.processNifStream(tempfile_stream, filename,
+                            radius_threshold_arg=mod_threshold, ref_scale=ref_scale,
+                            input_datadir_arg=input_datadir, output_datadir_arg=output_datadir,
+                            decimation_ratio=mod_reduction, keep_border=keep_border,
+                            texture_cache=texture_cache)
         tempfile_stream.close()
         #... call blender polyreducer
         if do_output == 1:
@@ -335,6 +339,8 @@ def main():
                 nif_joblist[nif_filename] = float(ref_scale)
     nifjob_stream.close()
 
+    texture_cache = dict()
+
     if multiprocessing_on:
         #===== Multi-threaded processNif() =======
         manager = multiprocessing.Manager()
@@ -342,7 +348,7 @@ def main():
         print "DEBUG: CPU_COUNT = " + str(CPU_COUNT)
         print "DEBUG: jobpool size = " + str(len(nif_joblist))
         pool = multiprocessing.Pool(processes=CPU_COUNT)
-        map_async_result = pool.map_async(perform_job_processNif_safe, [(x, mqueue) for x in nif_joblist.iteritems()])
+        map_async_result = pool.map_async(perform_job_processNif_safe, [(x, texture_cache, mqueue) for x in nif_joblist.iteritems()])
 
         # do non-blocking wait for job pool threads to complete, then retrieve and post-process results
         while not map_async_result.ready() or mqueue.qsize() > 0:
@@ -363,7 +369,7 @@ def main():
                     mod_reduction = nif_reduction_scale - flora_reduction_modifier
                 else:
                     mod_reduction = nif_reduction_scale
-                FarNifAutoGen_processNif.postprocessNif(output_datadir + out_filename)
+#                FarNifAutoGen_processNif.postprocessNif(output_datadir + out_filename)
 
         # do a final blocking wait for any remaining threads to complete                
         try:
@@ -390,7 +396,7 @@ def main():
                     mod_reduction = nif_reduction_scale - flora_reduction_modifier
                 else:
                     mod_reduction = nif_reduction_scale
-                FarNifAutoGen_processNif.postprocessNif(output_datadir + out_filename)
+#                FarNifAutoGen_processNif.postprocessNif(output_datadir + out_filename)
 
     else:
         #======= Single-threaded processNif() ========
@@ -413,7 +419,11 @@ def main():
                     mod_reduction = nif_reduction_scale
 
                 # processNif a single nifstream and retrieve results    
-                do_output = FarNifAutoGen_processNif.processNifStream(tempfile_stream, filename, radius_threshold_arg=mod_threshold, ref_scale=nif_joblist[filename], input_datadir_arg=input_datadir, output_datadir_arg=output_datadir, decimation_ratio=mod_reduction, keep_border=keep_border)
+                do_output = FarNifAutoGen_processNif.processNifStream(tempfile_stream, filename,
+                                    radius_threshold_arg=mod_threshold, ref_scale=nif_joblist[filename],
+                                    input_datadir_arg=input_datadir, output_datadir_arg=output_datadir,
+                                    decimation_ratio=mod_reduction, keep_border=keep_border,
+                                    texture_cache=texture_cache)
                 tempfile_stream.close()
                 
                 if do_output == 1:
@@ -446,42 +456,42 @@ def main():
                 dds_joblist.append(dds_filename)
         ddsjob_stream.close()
 
-        # copy source DDS files to output folder
-        if not multiprocessing_on:
-            # single-process
-            for line in dds_joblist:
-                output_filename, tags = line.split(",", 1)
-                input_filename = output_filename.replace("lowres/", "")
-    #            print "process dds file: " + input_datadir + input_filename
-                tempfile_stream = GetInputFileStream(input_filename)
-                if tempfile_stream is not None:
-                    folderPath = os.path.dirname(output_datadir + output_filename)
-                    if os.path.exists(folderPath) == False:
-                        os.makedirs(folderPath)
-                    output_stream = open(output_datadir + output_filename, "wb")
-                    data = tempfile_stream.read()
-                    output_stream.write(data)
-                    output_stream.close()
-                    tempfile_stream.close()
-                    print "prepareDDS(" + input_filename + "): complete."
-                else:
-    #                print "  file not found, skipping"
-                    debug_print("processDDS_joblist(" + input_filename + ") ERROR: file not found.")
-                    continue
-        else:
-            # multi-threaded
-            # use dds_joblist as jobpool
-            dds_jobpool = list()
-            for line in dds_joblist:
-                dds_jobpool.append(line)
-            dds_pool = multiprocessing.Pool(processes=CPU_COUNT)
-            dds_result = dds_pool.map_async(perform_job_prepareDDS, dds_jobpool)
-            try:
-                dds_result.wait(timeout=99999999)
-                dds_pool.close()
-                dds_pool.join()
-            except KeyboardInterrupt:
-                print "ERROR: jobpool processNif() interrupted."
+##        # copy source DDS files to output folder
+##        if not multiprocessing_on:
+##            # single-process
+##            for line in dds_joblist:
+##                output_filename, tags = line.split(",", 1)
+##                input_filename = output_filename.replace("lowres/", "")
+##    #            print "process dds file: " + input_datadir + input_filename
+##                tempfile_stream = GetInputFileStream(input_filename)
+##                if tempfile_stream is not None:
+##                    folderPath = os.path.dirname(output_datadir + output_filename)
+##                    if os.path.exists(folderPath) == False:
+##                        os.makedirs(folderPath)
+##                    output_stream = open(output_datadir + output_filename, "wb")
+##                    data = tempfile_stream.read()
+##                    output_stream.write(data)
+##                    output_stream.close()
+##                    tempfile_stream.close()
+##                    print "prepareDDS(" + input_filename + "): complete."
+##                else:
+##    #                print "  file not found, skipping"
+##                    debug_print("processDDS_joblist(" + input_filename + ") ERROR: file not found.")
+##                    continue
+##        else:
+##            # multi-threaded
+##            # use dds_joblist as jobpool
+##            dds_jobpool = list()
+##            for line in dds_joblist:
+##                dds_jobpool.append(line)
+##            dds_pool = multiprocessing.Pool(processes=CPU_COUNT)
+##            dds_result = dds_pool.map_async(perform_job_prepareDDS, dds_jobpool)
+##            try:
+##                dds_result.wait(timeout=99999999)
+##                dds_pool.close()
+##                dds_pool.join()
+##            except KeyboardInterrupt:
+##                print "ERROR: jobpool processNif() interrupted."
 
         temp_jobfile = dds_list_jobfile.replace(".job","-temp.job")
         ddsjob_stream = open(output_root + temp_jobfile, "w")
@@ -500,4 +510,73 @@ if __name__ == "__main__":
     main()
 
 
+def GetInputFileStream(filename):
+    data_source_tempfilename = "lookup_datasources.tmp"
+
+    # load lookup_datasource tempfile
+    data_source_tempstream = open(data_source_tempfilename,"r")
+    for raw_line in data_source_tempstream:
+        line, tags = raw_line.rstrip("\r\n").split(",",1)
+#        print "datasource: " + line
+        if os.path.isdir(line):
+            # search for filename directly from path
+            if os.path.exists(line + filename):
+                # copy to tempfile and return tempfile_object
+                in_stream = open(line + filename, "rb")
+                tempfile_stream = tempfile.TemporaryFile()                
+                data = in_stream.read()
+                tempfile_stream.write(data)
+                in_stream.close()
+                tempfile_stream.seek(0)
+                data_source_tempstream.close()
+                return tempfile_stream
+            else:
+                continue
+        elif os.path.isfile(line):
+            # search for filename in BSA
+            # load bsa
+            bsa_stream = open(line, "rb")
+            bsa_data = BsaFormat.Data()
+            bsa_data.inspect(bsa_stream)
+            if ".nif" in filename.lower() and "nif" not in tags:
+#                if bsa_data.file_flags.has_nif is False:
+                    continue
+            elif ".dds" in filename.lower() and "dds" not in tags:
+#                if bsa_data.file_flags.has_dds is False:
+                    continue
+            bsa_is_compressed = bsa_data.archive_flags.is_compressed
+            bsa_data.read(bsa_stream)
+            for folder_block in bsa_data.folders:
+                for file_block in folder_block.files:
+                    bsa_filepath = folder_block.name + "/" + file_block.name
+                    bsa_filepath = os.path.normpath(bsa_filepath).replace("\\","/").lower()
+                    if bsa_filepath == filename.replace("\\","/").lower():
+                        # get stream to filepath
+                        file_offset = file_block.offset
+                        file_size = file_block.file_size.num_bytes
+                        bsa_stream.seek(file_offset)
+                        if file_block.file_size.is_compressed_override:
+                            fileblock_is_compressed = not bsa_is_compressed
+                        else:
+                            fileblock_is_compressed = bsa_is_compressed
+                        if fileblock_is_compressed:
+                            file_originalsize = bsa_stream.read(4)
+                            z_data = bsa_stream.read(file_size)
+                            file_data = zlib.decompress(z_data)
+                        else:
+                            file_data = bsa_stream.read(file_size)
+                        tempfile_stream = tempfile.TemporaryFile()
+                        tempfile_stream.write(file_data)
+                        bsa_stream.close()
+                        tempfile_stream.seek(0)
+                        data_source_tempstream.close()
+                        return tempfile_stream
+                    else:
+                        continue
+            bsa_stream.close()
+
+    data_source_tempstream.close()
+    # assume load failed
+    debug_print("GetInputFileStream(" + filename + ") ERROR: could not load file from any data_source.")
+    return None
 
