@@ -449,11 +449,11 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
                 PMBlock(block.data, decimation_ratio, keep_border)
         
 #        print "calling optimize_nifdata(nifdata)"
-        nifdata = optimize_nifdata(nifdata)
+#        nifdata = optimize_nifdata(nifdata)
 #        print "calling output_niffile(nifdata, input_filename, output_datadir)"
 #        output_niffile(nifdata, input_filename, output_datadir_arg)
 #        print "calling output_ddslist(dds_list)"
-        output_ddslist(dds_list, output_root)
+#        output_ddslist(dds_list, output_root)
         
 #    print "calling shutdown_logger()"
 #    shutdown_logger(pyffilogger, loghandler)
