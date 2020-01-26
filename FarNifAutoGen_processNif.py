@@ -352,7 +352,7 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
 
     # global AlphaProperty sharable by all blocks in model
     alphablock = NifFormat.NiAlphaProperty()
-    alphablock.flags = 4844
+    alphablock.flags = 32
     alphablock.threshold = 0
 
     block_decimation_list = list()
@@ -390,6 +390,7 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
                 for prop in block.get_properties():
                     if isinstance(prop, NifFormat.NiAlphaProperty):
                         block_has_alpha_prop = True
+
                     if isinstance(prop, NifFormat.NiTexturingProperty):
                         if prop.has_base_texture:
                             if prop.base_texture is not None:
@@ -468,11 +469,15 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
     if do_output == 1:
 #        if "tree" in input_filename:
         if True:
-            render_Billboard_textures(nifdata, model_minmax_list, input_filename, input_datadir_arg, output_datadir_arg)            
+            render_Billboard_textures(nifdata, model_minmax_list, input_filename, input_datadir_arg, output_datadir_arg)
             newroot = NifFormat.NiNode()
             newroot.name = "Scene Root"
 #            nifdata.roots.append(newroot)
-            BillboardAutoGen(input_filename, newroot, model_minmax_list, alphablock)
+
+            billboard_alpha = NifFormat.NiAlphaProperty()
+            billboard_alpha.flags = 4844
+            billboard_alpha.threshold = 127
+            BillboardAutoGen(input_filename, newroot, model_minmax_list, billboard_alpha)
 
             # create new nifdata stream and write to output file ....
             new_nifdata = NifFormat.Data(version=0x14000005, user_version=10)
@@ -553,6 +558,97 @@ from OpenGL.GLU import *
 from OpenGL.GL.EXT import texture_compression_s3tc as s3tc
 import numpy
 from pyffi.formats.dds import DdsFormat
+
+
+def interpret_blendfunc(blendfunc):
+    if blendfunc == 0:
+        func_val = GL_ONE
+    elif blendfunc == 1:
+        func_val = GL_ZERO
+    elif blendfunc == 2:
+        func_val = GL_SRC_COLOR
+    elif blendfunc == 3:
+        func_val = GL_ONE_MINUS_SRC_COLOR
+    elif blendfunc == 4:
+        func_val = GL_DST_COLOR
+    elif blendfunc == 5:
+        func_val = GL_ONE_MINUS_DST_COLOR
+    elif blendfunc == 6:
+        func_val = GL_SRC_ALPHA
+    elif blendfunc == 7:
+        func_val = GL_ONE_MINUS_SRC_ALPHA
+    elif blendfunc == 8:
+        func_val = GL_DST_ALPHA
+    elif blendfunc == 9:
+        func_val = GL_ONE_MINUS_DST_ALPHA
+    elif blendfunc == 10:
+        func_val = GL_SRC_ALPHA_SATURATE
+
+    return func_val
+
+
+def interpet_alphafunc(alphafunc):
+    if alphafunc == 0:
+        func_val = GL_ALWAYS
+    elif alphafunc == 1:
+        func_val = GL_LESS
+    elif alphafunc == 2:
+        func_val = GL_EQUAL
+    elif alphafunc == 3:
+        func_val = GL_LEQUAL
+    elif alphafunc == 4:
+        func_val = GL_GREATER
+    elif alphafunc == 5:
+        func_val = GL_NOTEQUAL
+    elif alphafunc == 6:
+        func_val = GL_GEQUAL
+    elif alphafunc == 7:
+        func_val = GL_NEVER
+
+    return func_val
+
+
+def interpret_alpha_prop(prop):
+    Mask_AlphaBlend_Enable = 0x1
+    Mask_SourceBlend_Func = 0xF << 1
+    Mask_DestBlend_Func = 0xF << 5
+    Mask_AlphaTest_Enable = 0x1 << 9
+    Mask_AlphaTest_Mode = 0x7 << 10
+    Mask_NoSorter_Flag = 0x1 << 13
+
+    flag_alpha_blend_enable = (prop.flags & Mask_AlphaBlend_Enable)
+    flag_source_blend_func = (prop.flags & Mask_SourceBlend_Func) >> 1
+    flag_dest_blend_func = (prop.flags & Mask_DestBlend_Func) >> 5
+    flag_alpha_test_enable = (prop.flags & Mask_AlphaTest_Enable) >> 9
+    flag_alpha_test_mode = (prop.flags & Mask_AlphaTest_Mode) >> 10
+    flag_no_sorter_flag = (prop.flags & Mask_NoSorter_Flag) >> 13
+
+    if flag_alpha_blend_enable:
+        glEnable(GL_BLEND)
+    else:
+        glDisable(GL_BLEND)
+
+    #force off
+    glDisable(GL_BLEND)
+
+    print "source_blend_func = " + hex(flag_source_blend_func)
+    print "dest_blend_func = " + hex(flag_dest_blend_func)
+    print "alpha_test_mode = " + hex(flag_alpha_test_mode)
+
+    src_func = interpret_blendfunc(flag_source_blend_func)
+    dest_func = interpret_blendfunc(flag_dest_blend_func)
+    alpha_func = interpet_alphafunc(flag_alpha_test_mode)
+    
+    glBlendFunc(src_func, dest_func)
+    threshold = prop.threshold / 255.
+    glAlphaFunc(alpha_func, threshold)
+        
+    if flag_alpha_test_enable:
+        glEnable(GL_ALPHA_TEST)
+    else:
+        glDisable(GL_ALPHA_TEST)
+
+    return
 
 
 def fbo2_init():
@@ -636,7 +732,7 @@ def float_size(n=1):
 def pointer_offset(n=0):
     return ctypes.c_void_p(float_size(n))
 
-def load_sourcetexture_block(block, texture_cache, has_alpha, input_datadir):
+def load_sourcetexture_block(block, texture_cache, has_alpha, has_parallax, input_datadir):
     # get texture filename
     texture_path = block.file_name
     filename = texture_path
@@ -825,13 +921,17 @@ def render_root_tree(root, RenderView, fbo, mesh_cache, texture_cache, input_dat
         if isinstance(block, NifFormat.NiTriShape) or isinstance(block, NifFormat.NiTriStrips):
 #            print "Loading Tri-Node: " + block.name
             block_has_alpha_prop = False
+            block_has_parallax = False
             sourcetextures_list = list()
             # 1. check for alpha property first
             for prop in block.get_properties():
                 if isinstance(prop, NifFormat.NiAlphaProperty):
                     block_has_alpha_prop = True
                     # insert Alpha Function Tests Here...
+                    interpret_alpha_prop(prop)
                 if isinstance(prop, NifFormat.NiTexturingProperty):
+                    if prop.apply_mode == 4:
+                        block_has_parallax = True
                     if prop.has_base_texture:
                         if prop.base_texture is not None:
                             sourcetextures_list.append(prop.base_texture.source)
@@ -839,13 +939,10 @@ def render_root_tree(root, RenderView, fbo, mesh_cache, texture_cache, input_dat
                         if prop.bump_map_texture is not None:
                             sourcetextures_list.append(prop.bump_map_texture.source)
 
-            # 1.5 if has_alpha == False
-                # reset Alpha Functions to default state...
-
             # 2. then process any texture properties
             for sourcetexture in sourcetextures_list:
                 if sourcetexture is not None:
-                    ddsTexture = load_sourcetexture_block(sourcetexture, texture_cache, block_has_alpha_prop, input_datadir)
+                    ddsTexture = load_sourcetexture_block(sourcetexture, texture_cache, block_has_alpha_prop, block_has_parallax, input_datadir)
 
             # check for VertexData, calculate model_min/max if present
             if block.data is not None:
