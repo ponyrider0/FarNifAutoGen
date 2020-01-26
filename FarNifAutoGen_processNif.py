@@ -1024,7 +1024,7 @@ def render_Billboard_textures(nifdata, model_minmax_list, input_filename, input_
 
     if doInit:
         glutInit()
-        glutInitDisplayMode(GLUT_RGBA | GLUT_MULTISAMPLE)
+        glutInitDisplayMode(GLUT_RGBA)
         glutInitWindowSize(window_width, window_height)
         glutInitWindowPosition(0,0)
         window = glutCreateWindow("Billboard Texture Preview")
