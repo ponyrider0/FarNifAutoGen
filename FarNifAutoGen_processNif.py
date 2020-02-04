@@ -295,11 +295,11 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
 #    dds_list = list()
     dds_list = dict()
 
+##    print "Resetting Texture Cache..."
+##    texture_cache = None
     if texture_cache is None:
         print "Cache not found.  Initializing new cache..."
         texture_cache = dict()
-#    print "Reset texture cache"
-#    texture_cache = dict()
 
     model_minmax_list = [None, None, None, None, None, None]
 
@@ -515,6 +515,7 @@ def makeTriShape(verts, triangles, normals=None, uv_set=None, texture_name=None,
         source.use_external = 1
         source.file_name = texture_name
         textureprop.has_base_texture = True
+        textureprop.base_texture.clamp_mode = 0
         textureprop.base_texture.source = source
         shape.add_property(textureprop)
 
@@ -632,6 +633,7 @@ def fbo2_init():
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SIDE, SIDE, 0, GL_RGBA, GL_UNSIGNED_BYTE, None)
+#    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SIDE, SIDE, 0, GL_RGB, GL_UNSIGNED_BYTE, None)
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, rgb_texture2, 0)
 
     # depth buffer
@@ -672,6 +674,7 @@ def fbo_init():
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, rgb_texture, 0)
     else:
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SIDE*MultiSampleRate, SIDE*MultiSampleRate, 0, GL_RGBA, GL_UNSIGNED_BYTE, None)
+#        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SIDE*MultiSampleRate, SIDE*MultiSampleRate, 0, GL_RGB, GL_UNSIGNED_BYTE, None)
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, rgb_texture, 0)
 
     # depth buffer
@@ -729,11 +732,22 @@ def load_sourcetexture_block(block, texture_cache, has_alpha, has_parallax, inpu
 
     height = ddsdata.header.height
     width = ddsdata.header.width
+
     linear_size = ddsdata.header.linear_size
     mipmap_count = ddsdata.header.mipmap_count
     pixel_format = ddsdata.header.pixel_format
     fourCC = pixel_format.four_c_c
     texture_buffer = ddsdata.pixeldata.get_value()
+##    print "DDS Info for " + filename + ":"
+##    print " dimensions: " + str(width) + " x " + str(height)
+##    print " size: " + str(linear_size)
+##    print " mipmaps: " + str(mipmap_count)
+##    if fourCC == DdsFormat.FourCC.DXT1:
+##        print " compression: DXT1"
+##    elif fourCC == DdsFormat.FourCC.DXT3:
+##        print " compression: DXT3"
+##    elif fourCC == DdsFormat.FourCC.DXT5:
+##        print " compression: DXT5"
 
     if fourCC == DdsFormat.FourCC.DXT1:
         components = 3
@@ -756,19 +770,46 @@ def load_sourcetexture_block(block, texture_cache, has_alpha, has_parallax, inpu
     ddsTexture = GLuint()
     glGenTextures(1, ddsTexture)
     glBindTexture(GL_TEXTURE_2D, ddsTexture)
-    glTextureParameteri(ddsTexture, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-#    glTextureParameteri(ddsTexture, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST)
-    glTextureParameterf(ddsTexture, GL_TEXTURE_LOD_BIAS, -1.0)
 
-    glTextureParameteri(ddsTexture, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-#    glTextureParameteri(ddsTexture, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+#### GL 4.4 needed
+##    glTextureParameteri(ddsTexture, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+##    glTextureParameteri(ddsTexture, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST)
+##    glTextureParameterf(ddsTexture, GL_TEXTURE_LOD_BIAS, -1.0)
+##    glTextureParameteri(ddsTexture, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+##    glTextureParameteri(ddsTexture, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
 
+#### Does not work with HD4000?
+###    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+###    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+###    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, -1.0)
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+#    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, -1.0)
+
+#    texture_buffer2 = numpy.fromstring(texture_buffer, dtype=numpy.uint8)
+#    texture_buffer = texture_buffer2
+    
     offset = 0
     for level in xrange(mipmap_count):
         size = ((width+3)/4)*((height+3)/4)*blockSize
-        glCompressedTexImage2D(GL_TEXTURE_2D, level, glformat, width, height,
-                               0, size, texture_buffer[offset:offset+size])
-#        print "loading mipmap level: " + str(level)
+#        print "loading mipmap level: " + str(level) + ", dim: " + str(width) + " x " + str(height)
+#        print "  offset: " + str(offset) + ", size: " + str(size)
+
+        if offset+size > len(texture_buffer):
+            print "ERROR with offset caculation: offset+size= " + str(offset+size) + ", buffer_size= " + str(len(texture_buffer))
+            break
+        
+        try:
+            glCompressedTexImage2D(GL_TEXTURE_2D, level, glformat, width, height,
+                                   0, size, texture_buffer[offset:offset+size] )
+        except:
+#            glCompressedTexImage2D(GL_TEXTURE_2D, level, glformat, width, height,
+#                               0, texture_buffer[offset:offset+size],
+#                               texture_buffer[offset:offset+size])
+            glCompressedTexImage2D(GL_TEXTURE_2D, level, glformat, width, height,
+                               0, texture_buffer[offset:offset+size])
+        
         offset += size
         width /= 2
         height /= 2
@@ -776,15 +817,16 @@ def load_sourcetexture_block(block, texture_cache, has_alpha, has_parallax, inpu
             width = 1
         if height == 0:
             height = 1
-        if offset >= len(texture_buffer):
-            break;
+#        if offset >= len(texture_buffer):
+#            print "ERROR with offset caculation: offset= " + str(offset)
+#            break;
 
-#    print "Adding " + filename + " to cache..."
+##    print "Adding " + filename + " to cache..."
     texture_cache[key] = ddsTexture   
     return ddsTexture
 
 
-def render_triangle_block_data(block, root, use_strips, fbo, mesh_cache, ddsTexture, RenderView):
+def render_triangle_block_data(block, root, use_strips, fbo, mesh_cache, ddsTexture, RenderView, has_parallax=False):
 
     if block in mesh_cache:
         # skip vertex array creation, just composite transforms and draw vao
@@ -801,6 +843,15 @@ def render_triangle_block_data(block, root, use_strips, fbo, mesh_cache, ddsText
     glBindFramebuffer(GL_FRAMEBUFFER, fbo)
     glBindTexture(GL_TEXTURE_2D, ddsTexture)
 
+    if has_parallax == True:
+        glDisable(GL_TEXTURE_2D)
+        glDisable(GL_DEPTH_TEST)
+        glColor4f(0, 1, 0, 1)
+    else:
+        glEnable(GL_TEXTURE_2D)
+        glEnable(GL_DEPTH_TEST)
+        glColor4f(1, 1, 1, 1)
+                    
     glMatrixMode(GL_MODELVIEW)
     glLoadIdentity()
 
@@ -840,8 +891,8 @@ def render_triangle_block_data(block, root, use_strips, fbo, mesh_cache, ddsText
                 vert = block.vertices[vert_index]
                 if has_uv:
                     uv = block.uv_sets[0][vert_index]
-                    glTexCoord2f(uv.u, uv.v)                
-                if block.has_vertex_colors:
+                    glTexCoord2f(uv.u, 1-uv.v)                
+                if block.has_vertex_colors and has_parallax == False:
                     color = block.vertex_colors[vert_index]
                     glColor4f(color.r, color.g, color.b, color.a)
                 if block.has_normals:
@@ -860,8 +911,8 @@ def render_triangle_block_data(block, root, use_strips, fbo, mesh_cache, ddsText
                 vert = block.vertices[vert_index]
                 if has_uv:
                     uv = block.uv_sets[0][vert_index]
-                    glTexCoord2f(uv.u, uv.v)                
-                if block.has_vertex_colors:
+                    glTexCoord2f(uv.u, 1-uv.v)                
+                if block.has_vertex_colors and has_parallax == False:
                     color = block.vertex_colors[vert_index]
                     glColor4f(color.r, color.g, color.b, color.a)
                 if block.has_normals:
@@ -893,9 +944,9 @@ def render_root_tree(root, RenderView, fbo, mesh_cache, texture_cache, input_dat
                     if prop.has_base_texture:
                         if prop.base_texture is not None:
                             sourcetextures_list.append(prop.base_texture.source)
-                    if prop.has_bump_map_texture:
-                        if prop.bump_map_texture is not None:
-                            sourcetextures_list.append(prop.bump_map_texture.source)
+#                    if prop.has_bump_map_texture:
+#                        if prop.bump_map_texture is not None:
+#                            sourcetextures_list.append(prop.bump_map_texture.source)
 
             # 2. then process any texture properties
             for sourcetexture in sourcetextures_list:
@@ -907,7 +958,14 @@ def render_root_tree(root, RenderView, fbo, mesh_cache, texture_cache, input_dat
                 use_strips = False
                 if isinstance(block, NifFormat.NiTriStrips):
                     use_strips = True
-                render_triangle_block_data(block.data, root, use_strips, fbo, mesh_cache, ddsTexture, RenderView)
+                if (block_has_parallax == False):
+                    print "rendering without parallax..."
+                    render_triangle_block_data(block.data, root, use_strips, fbo, mesh_cache, ddsTexture, RenderView)
+                else:
+                    print "rendering with parallax..."
+#                    render_triangle_block_data(block.data, root, use_strips, fbo, mesh_cache, 0, RenderView, True)
+                    render_triangle_block_data(block.data, root, use_strips, fbo, mesh_cache, ddsTexture, RenderView)
+                    
 
 
 def render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, input_filename, input_datadir, model_minmax_list):
@@ -961,7 +1019,8 @@ def save_fbo_to_file(texture_name, fbo, fbo2, rgb_texture2, depth_texture2, outp
     if Use_GL_MultiSample:
         glBlitFramebuffer(0, 0, SIDE, SIDE, 0, 0, SIDE, SIDE, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST)
     else:
-        glBlitFramebuffer(0, 0, SIDE, SIDE, 0, 0, SIDE*MultiSampleRate, SIDE*MultiSampleRate, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST)
+#        glBlitFramebuffer(0, 0, SIDE, SIDE, 0, 0, SIDE*MultiSampleRate, SIDE*MultiSampleRate, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST)
+        glBlitFramebuffer(0, 0, SIDE, SIDE, 0, 0, SIDE*MultiSampleRate, SIDE*MultiSampleRate, GL_COLOR_BUFFER_BIT, GL_NEAREST)
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0)
     glBindTexture(GL_TEXTURE_2D, 0)
@@ -1080,8 +1139,7 @@ def render_Billboard_textures(nifdata, model_minmax_list,
 
     return
 
-def BillboardAutoGen(input_filename, root, model_minmax_list, alphablock, trunk_center=[0,0]):
-    # TODO: remove existing meshes
+def BillboardAutoGen(input_filename, root, model_minmax_list, alphablock, trunk_center=None):
 
     model_minx = model_minmax_list[0]
     model_miny = model_minmax_list[1]
@@ -1089,6 +1147,13 @@ def BillboardAutoGen(input_filename, root, model_minmax_list, alphablock, trunk_
     model_maxx = model_minmax_list[3]
     model_maxy = model_minmax_list[4]
     model_maxz = model_minmax_list[5]
+
+    if trunk_center is None:
+        trunk_center = [0, 0, 0]
+        trunk_center[0] = (model_minx + model_maxx)/2
+        trunk_center[1] = (model_miny + model_maxy)/2
+        priority_weight = 0.9
+        trunk_center[2] = model_minz*(1-priority_weight) + model_maxz*priority_weight
 
     # Billboard A: X-Z Plane, Y=0
     VertsA = []
@@ -1118,15 +1183,15 @@ def BillboardAutoGen(input_filename, root, model_minmax_list, alphablock, trunk_
 #    UVset = []
     uv_set = []
     #front
-    uv_set.append([0, 1])
-    uv_set.append([1, 1])
-    uv_set.append([1, 0])
-    uv_set.append([0, 0])
+    uv_set.append([0.01, 0.99])
+    uv_set.append([0.99, 0.99])
+    uv_set.append([0.99, 0.01])
+    uv_set.append([0.01, 0.01])
     #back
-    uv_set.append([0, 1])
-    uv_set.append([1, 1])
-    uv_set.append([1, 0])
-    uv_set.append([0, 0])
+    uv_set.append([0.01, 0.99])
+    uv_set.append([0.99, 0.99])
+    uv_set.append([0.99, 0.01])
+    uv_set.append([0.01, 0.01])
 
     TrianglesA = []
     TrianglesA.append( [0, 1, 2]) # front
@@ -1166,6 +1231,29 @@ def BillboardAutoGen(input_filename, root, model_minmax_list, alphablock, trunk_
 #    texture_name = "PLACEHOLDER"
     shape = makeTriShape(VertsB, TrianglesA, normals, uv_set, texture_name, alphablock)
     root.add_child(shape)
+
+    # Billboard C: X-Y Plane, Z=model_maxz (make one-sided, facing up)
+    VertsC = []
+    VertsC.append([model_minx, model_miny, trunk_center[2]])
+    VertsC.append([model_minx, model_maxy, trunk_center[2]])
+    VertsC.append([model_maxx, model_maxy, trunk_center[2]])
+    VertsC.append([model_maxx, model_miny, trunk_center[2]])
+    normals = []
+    normals.append([0, 0, 1])
+    normals.append([0, 0, 1])
+    normals.append([0, 0, 1])
+    normals.append([0, 0, 1])
+    uv_set = []
+    uv_set.append([0.01, 0.99])
+    uv_set.append([0.99, 0.99])
+    uv_set.append([0.99, 0.01])
+    uv_set.append([0.01, 0.01])
+    TrianglesA = []
+    TrianglesA.append( [0, 2, 1]) # front
+    TrianglesA.append( [0, 3, 2] )# front
+    texture_name = texture_name.replace("Side.dds", "Top.dds")
+    shape = makeTriShape(VertsC, TrianglesA, normals, uv_set, texture_name, alphablock)
+    root.add_child(shape)  
 
 
 
