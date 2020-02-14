@@ -891,7 +891,7 @@ def render_triangle_block_data(block, root, use_strips, fbo, mesh_cache, ddsText
                 vert = block.vertices[vert_index]
                 if has_uv:
                     uv = block.uv_sets[0][vert_index]
-                    glTexCoord2f(uv.u, 1-uv.v)                
+                    glTexCoord2f(uv.u, uv.v)                
                 if block.has_vertex_colors and has_parallax == False:
                     color = block.vertex_colors[vert_index]
                     glColor4f(color.r, color.g, color.b, color.a)
@@ -911,7 +911,7 @@ def render_triangle_block_data(block, root, use_strips, fbo, mesh_cache, ddsText
                 vert = block.vertices[vert_index]
                 if has_uv:
                     uv = block.uv_sets[0][vert_index]
-                    glTexCoord2f(uv.u, 1-uv.v)                
+                    glTexCoord2f(uv.u, uv.v)                
                 if block.has_vertex_colors and has_parallax == False:
                     color = block.vertex_colors[vert_index]
                     glColor4f(color.r, color.g, color.b, color.a)
@@ -926,6 +926,7 @@ def render_triangle_block_data(block, root, use_strips, fbo, mesh_cache, ddsText
 
 def render_root_tree(root, RenderView, fbo, mesh_cache, texture_cache, input_datadir):
 
+    ddsTexture = 0
     for block in root.tree():
         if isinstance(block, NifFormat.NiTriShape) or isinstance(block, NifFormat.NiTriStrips):
 #            print "Loading Tri-Node: " + block.name
@@ -1001,7 +1002,7 @@ def render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, i
 
     # front projection
     if RenderView is "front":
-        glOrtho(model_minx, model_maxx, model_minz, model_maxz, model_maxy+1000, model_miny-1000)
+        glOrtho(model_minx, model_maxx, model_minz, model_maxz, model_maxy, model_miny)
 
     if RenderView is "side":
         glOrtho(model_miny, model_maxy, model_minz, model_maxz, model_minx, model_maxx)
