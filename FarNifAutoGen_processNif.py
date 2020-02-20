@@ -254,13 +254,20 @@ def output_ddslist(dds_list, output_root):
     #rename and copy textures to output stem...
     lowres_list_filename = "lowres_list.job"
     ostream = open(output_root + lowres_list_filename, "a")
-    for filename, has_alpha in dds_list.items():
+    billboards_list_filename = "billboards_list.txt"
+    billboard_ostream = open(output_root + billboards_list_filename, "a")
+    for filename, data in dds_list.items():
+        has_alpha, model_bounds, width, height = data
+#        spt_name = os.path.basename(filename).lower().replace(".dds", ".spt")
+        billboard_ostream.write(filename + "," + str(model_bounds) + "," + str(width) + "," + str(height) + "\n")
         if has_alpha is True:
             alpha_tag = "alpha=1"
         else:
             alpha_tag = "alpha=0"
         ostream.write(filename + "," + alpha_tag + "\n")
+
     ostream.close()
+    billboard_ostream.close()
 #    print "leaving output_ddslist()"
 
 
@@ -1002,7 +1009,19 @@ def render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, i
 
     # front projection
     if RenderView is "front":
-        glOrtho(model_minx, model_maxx, model_minz, model_maxz, model_maxy, model_miny)
+#        glOrtho(model_minx, model_maxx, model_minz, model_maxz, model_maxy, model_miny)
+        height = model_maxz - model_minz
+        width = model_maxx - model_minx
+        center_x = (model_minx + model_maxx)/2
+        if height > width:
+            new_size = height
+        else:
+            new_size = width
+        new_minx = center_x - (new_size/2)
+        new_maxx = center_x + (new_size/2)
+        new_miny = model_minz
+        new_maxy = new_miny + new_size
+        glOrtho(new_minx, new_maxx, new_miny, new_maxy, model_maxy, model_miny)
 
     if RenderView is "side":
         glOrtho(model_miny, model_maxy, model_minz, model_maxz, model_minx, model_maxx)
@@ -1113,23 +1132,27 @@ def render_Billboard_textures(nifdata, model_minmax_list,
     glEnable(GL_TEXTURE_2D)
     glEnable(GL_DEPTH_TEST)
 
-    RenderView = "top"   
-    render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, input_filename, input_datadir, model_minmax_list)
-    texture_name = input_filename.lower().replace("\\", "/").replace(".nif", "Top.dds").replace("meshes/", "textures/lowres/")
-    save_fbo_to_file(texture_name, fbo, fbo2, rgb_texture2, depth_texture2, output_datadir)
-    dds_list[texture_name] = True
+#    RenderView = "top"   
+#    render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, input_filename, input_datadir, model_minmax_list)
+#    texture_name = input_filename.lower().replace("\\", "/").replace(".nif", "Top.dds").replace("meshes/", "textures/lowres/")
+#    save_fbo_to_file(texture_name, fbo, fbo2, rgb_texture2, depth_texture2, output_datadir)
+#    dds_list[texture_name] = True
 
     RenderView = "front"   
     render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, input_filename, input_datadir, model_minmax_list)
-    texture_name = texture_name.replace("Top.dds", "Front.dds")
+#    texture_name = texture_name.replace("Top.dds", "Front.dds")
+    texture_name = "textures/trees/billboards/" + os.path.basename(input_filename.lower().replace(".nif", "Front.dds"))
     save_fbo_to_file(texture_name, fbo, fbo2, rgb_texture2, depth_texture2, output_datadir)
-    dds_list[texture_name] = True
+    model_radius = calc_model_radius_from_minmax(model_minmax_list)
+    billboard_width = model_minmax_list[3]-model_minmax_list[0] # maxx - minx
+    billboard_height = model_minmax_list[5]-model_minmax_list[2] # maxz - minz
+    dds_list[texture_name] = [True, model_radius, billboard_width, billboard_height]
 
-    RenderView = "side"   
-    render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, input_filename, input_datadir, model_minmax_list)
-    texture_name = texture_name.replace("Front.dds", "Side.dds")
-    save_fbo_to_file(texture_name, fbo, fbo2, rgb_texture2, depth_texture2, output_datadir)
-    dds_list[texture_name] = True
+#    RenderView = "side"   
+#    render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, input_filename, input_datadir, model_minmax_list)
+#    texture_name = texture_name.replace("Front.dds", "Side.dds")
+#    save_fbo_to_file(texture_name, fbo, fbo2, rgb_texture2, depth_texture2, output_datadir)
+#    dds_list[texture_name] = True
 
     glDeleteTextures(rgb_texture)
     glDeleteTextures(rgb_texture2)
@@ -1200,8 +1223,8 @@ def BillboardAutoGen(input_filename, root, model_minmax_list, alphablock, trunk_
     TrianglesA.append( [4, 6, 5]) # back
     TrianglesA.append( [4, 7, 6] )# back
 
-    texture_name = input_filename.lower().replace("\\", "/").replace(".nif", "Front.dds").replace("meshes/", "textures/lowres/")
-#    texture_name = "PLACEHOLDER"
+    texture_name = None    
+#    texture_name = input_filename.lower().replace("\\", "/").replace(".nif", "Front.dds").replace("meshes/", "textures/lowres/")
     shape = makeTriShape(VertsA, TrianglesA, normals, uv_set, texture_name, alphablock)
     root.add_child(shape)
     
@@ -1228,8 +1251,7 @@ def BillboardAutoGen(input_filename, root, model_minmax_list, alphablock, trunk_
 #    UVset = []
     # Reuse UVset
 
-    texture_name = texture_name.replace("Front.dds", "Side.dds")
-#    texture_name = "PLACEHOLDER"
+#    texture_name = texture_name.replace("Front.dds", "Side.dds")
     shape = makeTriShape(VertsB, TrianglesA, normals, uv_set, texture_name, alphablock)
     root.add_child(shape)
 
@@ -1252,7 +1274,7 @@ def BillboardAutoGen(input_filename, root, model_minmax_list, alphablock, trunk_
     TrianglesA = []
     TrianglesA.append( [0, 2, 1]) # front
     TrianglesA.append( [0, 3, 2] )# front
-    texture_name = texture_name.replace("Side.dds", "Top.dds")
+#    texture_name = texture_name.replace("Side.dds", "Top.dds")
     shape = makeTriShape(VertsC, TrianglesA, normals, uv_set, texture_name, alphablock)
     root.add_child(shape)  
 
