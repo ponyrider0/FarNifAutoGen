@@ -257,13 +257,14 @@ def output_ddslist(dds_list, output_root):
     billboards_list_filename = "billboards_list.txt"
     billboard_ostream = open(output_root + billboards_list_filename, "a")
     for filename, data in dds_list.items():
-        has_alpha, model_bounds, width, height = data
+        alpha_val, model_bounds, width, height, zoffset = data
 #        spt_name = os.path.basename(filename).lower().replace(".dds", ".spt")
-        billboard_ostream.write(filename + "," + str(model_bounds) + "," + str(width) + "," + str(height) + "\n")
-        if has_alpha is True:
-            alpha_tag = "alpha=1"
-        else:
-            alpha_tag = "alpha=0"
+        billboard_ostream.write(filename + "," + str(model_bounds) + "," + str(width) + "," + str(height) + "," + str(zoffset) + "\n")
+#        if has_alpha is True:
+#            alpha_tag = "alpha=1"
+#        else:
+#            alpha_tag = "alpha=0"
+        alpha_tag = "alpha=" + str(alpha_val)
         ostream.write(filename + "," + alpha_tag + "\n")
 
     ostream.close()
@@ -446,19 +447,19 @@ def processNifStream(input_stream, input_filename, radius_threshold_arg=800.0, r
             render_Billboard_textures(nifdata, model_minmax_list,
                                       input_filename, input_datadir_arg, output_datadir_arg,
                                       dds_list, texture_cache)
-            newroot = NifFormat.NiNode()
-            newroot.name = "Scene Root"
+#            newroot = NifFormat.NiNode()
+#            newroot.name = "Scene Root"
 #            nifdata.roots.append(newroot)
 
-            billboard_alpha = NifFormat.NiAlphaProperty()
-            billboard_alpha.flags = 4844
-            billboard_alpha.threshold = 0
-            BillboardAutoGen(input_filename, newroot, model_minmax_list, billboard_alpha)
+#            billboard_alpha = NifFormat.NiAlphaProperty()
+#            billboard_alpha.flags = 4844
+#            billboard_alpha.threshold = 0
+#            BillboardAutoGen(input_filename, newroot, model_minmax_list, billboard_alpha)
 
             # create new nifdata stream and write to output file ....
-            new_nifdata = NifFormat.Data(version=0x14000005, user_version=10)
-            new_nifdata.roots = [newroot]
-            output_niffile(new_nifdata, input_filename, output_datadir_arg)
+#            new_nifdata = NifFormat.Data(version=0x14000005, user_version=10)
+#            new_nifdata.roots = [newroot]
+#            output_niffile(new_nifdata, input_filename, output_datadir_arg)
             
         else:
             # decimate blocks (NiTriShape(Data) and NiTriStrips(Data) 
@@ -933,6 +934,8 @@ def render_triangle_block_data(block, root, use_strips, fbo, mesh_cache, ddsText
 
 def render_root_tree(root, RenderView, fbo, mesh_cache, texture_cache, input_datadir):
 
+    model_has_parallax = 0
+    model_has_alpha = 0
     ddsTexture = 0
     for block in root.tree():
         if isinstance(block, NifFormat.NiTriShape) or isinstance(block, NifFormat.NiTriStrips):
@@ -973,6 +976,13 @@ def render_root_tree(root, RenderView, fbo, mesh_cache, texture_cache, input_dat
                     print "rendering with parallax..."
 #                    render_triangle_block_data(block.data, root, use_strips, fbo, mesh_cache, 0, RenderView, True)
                     render_triangle_block_data(block.data, root, use_strips, fbo, mesh_cache, ddsTexture, RenderView)
+
+            if block_has_alpha_prop:
+                model_has_alpha = 1
+            if block_has_parallax:
+                model_has_parallax = 1
+
+    return [model_has_alpha, model_has_parallax]
                     
 
 
@@ -997,7 +1007,7 @@ def render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, i
         glViewport( 0, 0, SIDE, SIDE )
     else:    
         glViewport( 0, 0, SIDE*MultiSampleRate, SIDE*MultiSampleRate )
-    glClearColor(0.0, 0.0, 0.0, 0.0)
+    glClearColor(0.0, 1.0, 0.0, 0.0)
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
     glMatrixMode(GL_PROJECTION)
@@ -1026,16 +1036,29 @@ def render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, i
     if RenderView is "side":
         glOrtho(model_miny, model_maxy, model_minz, model_maxz, model_minx, model_maxx)
 
+    model_has_alpha = 0
+    model_has_parallax = 0
     # step through all nodes...
-    for root in nifdata.roots:       
-        render_root_tree(root, RenderView, fbo, mesh_cache, texture_cache, input_datadir)
+    for root in nifdata.roots:
+        root_has_alpha = 0
+        root_has_parallax = 0
+        root_has_alpha, root_has_parallax = render_root_tree(root, RenderView, fbo, mesh_cache, texture_cache, input_datadir)
+        if root_has_alpha:
+            model_has_alpha = 1
+        if root_has_parallax:
+            model_has_parallax = 1
+
+    return [model_has_alpha, model_has_parallax]    
 
 
 def save_fbo_to_file(texture_name, fbo, fbo2, rgb_texture2, depth_texture2, output_datadir):
     # copy to fbo2
-    glBindFramebuffer(GL_FRAMEBUFFER, 0)
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo)
+#    glBindFramebuffer(GL_FRAMEBUFFER, 0)
+#    glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo)
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo2)
+#    glClearColor(0.0, 1.0, 0.0, 0.0)
+#    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    
     if Use_GL_MultiSample:
         glBlitFramebuffer(0, 0, SIDE, SIDE, 0, 0, SIDE, SIDE, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST)
     else:
@@ -1139,14 +1162,26 @@ def render_Billboard_textures(nifdata, model_minmax_list,
 #    dds_list[texture_name] = True
 
     RenderView = "front"   
-    render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, input_filename, input_datadir, model_minmax_list)
+    model_has_alpha, model_has_parallax = render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, input_filename, input_datadir, model_minmax_list)
+
 #    texture_name = texture_name.replace("Top.dds", "Front.dds")
     texture_name = "textures/trees/billboards/" + os.path.basename(input_filename.lower().replace(".nif", "Front.dds"))
     save_fbo_to_file(texture_name, fbo, fbo2, rgb_texture2, depth_texture2, output_datadir)
+    
     model_radius = calc_model_radius_from_minmax(model_minmax_list)
     billboard_width = model_minmax_list[3]-model_minmax_list[0] # maxx - minx
     billboard_height = model_minmax_list[5]-model_minmax_list[2] # maxz - minz
-    dds_list[texture_name] = [True, model_radius, billboard_width, billboard_height]
+    if billboard_height > billboard_width:
+        billboard_width = billboard_height
+    else:
+        billboard_height = billboard_width
+    billboard_zoffset = model_minmax_list[2] #minz
+    alpha_val = 0
+    if model_has_alpha:
+        alpha_val = 1
+    if model_has_parallax:
+        alpha_val = 2
+    dds_list[texture_name] = [alpha_val, model_radius, billboard_width, billboard_height, billboard_zoffset]
 
 #    RenderView = "side"   
 #    render_billboard_view(fbo, texture_cache, mesh_cache, RenderView, nifdata, input_filename, input_datadir, model_minmax_list)

@@ -73,6 +73,7 @@ def resize_lowres(file_path, reduction_factor_arg=8, tags=""):
         debug_output("ERROR trying to load: " + file_path + ", skipping...")
         return -1
         #pdb.gimp_quit(-1)
+
     #check for alpha=0, white-out alpha
     if "alpha=0" in tags:
         gimp.set_foreground(255, 255, 255)
@@ -86,6 +87,36 @@ def resize_lowres(file_path, reduction_factor_arg=8, tags=""):
         # apply mask
         pdb.gimp_layer_remove_mask(image.layers[0], 0)
 
+    # alpha=2:
+    #   1. remove current alpha channel by white-out method
+    #   2. select green (0,255,0) for alpha-key and delete
+    if True:
+#    if "alpha=2" in tags:
+        # 1. white-out current alpha channel
+        # create an alpha-transfer mask to change alpha channel
+        mask = pdb.gimp_layer_create_mask(image.layers[0], 3)
+        pdb.gimp_layer_add_mask(image.layers[0], mask)
+        # fill selection with foreground
+        gimp.set_foreground(255, 255, 255)
+        pdb.gimp_edit_fill(mask, 0)
+        # apply mask
+        pdb.gimp_layer_remove_mask(image.layers[0], 0)
+        # 2. delete green (0,255,0) for new alpha-key
+        pdb.gimp_context_set_antialias(False)
+        pdb.gimp_context_set_feather(False)
+ #       pdb.gimp_context_set_feather_radius(0.05, 0.05)        
+        pdb.gimp_context_set_sample_merged(True)
+        pdb.gimp_context_set_sample_threshold(0)
+        pdb.gimp_context_set_sample_transparent(True)
+        selection_op = 2 # replace
+        selection_color = (0,255,0)
+        pdb.gimp_image_select_color(image, selection_op, image.layers[0], selection_color)
+        gimp.set_foreground(0,0,0)
+        pdb.gimp_edit_fill(image.layers[0], 0)
+        pdb.gimp_edit_clear(image.layers[0])
+        
+
+    # resize only after modifying alpha, so there are no artifacts introduced
     use_width = False
     width = image.width
     height = image.height
@@ -129,7 +160,7 @@ def resize_lowres(file_path, reduction_factor_arg=8, tags=""):
                       1, # perceptual_metric: use a perceptual error metric during compression
                       0, # preserve_alpha_coverage: preserve alpha test coverage for alpha channel maps
                       0) # alpha_test_threshold: alpha test threshold value for which alpha test coverage should be preserved
-    fake_normalmap_file(filedir, filename)
+#    fake_normalmap_file(filedir, filename)
     gimp.delete(image)
 
 #def run_jobpool(file_path):
